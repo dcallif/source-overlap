@@ -51,15 +51,13 @@ The **agreement** metric is the share of claims addressed by 2+ publishers that
 are not contradicted. It shows `n/a` when no claim has enough independent
 coverage, rather than a misleading `0%`.
 
-This is a comparison of sources, **not a fact-checker**. "No coverage" means no
-retrieved source corroborated the claim in this sample — it is not disproof.
-
 ## Requirements
 
-- **LM Studio** with a chat model loaded (a 7B–14B instruct model works; larger
-  models judge more reliably) and the local server running on port 1234.
-  Large models are slow: a 27B model can take minutes per question, so start
-  with 4 sources and a smaller model.
+- **LM Studio** with a chat model loaded and the local server running on port
+  1234. Use a **7–14B** model by default; 12B worked well in testing. Very small
+  models (4B) often miss source details and produce incomplete answers. 27B+
+  models judge more reliably but can take minutes per question, so start with 4
+  sources.
 - Python 3.11+ (developed on 3.15) and Node 18+ for local development.
 - Python 3.10+ on the machine with LM Studio when using the hosted connector.
 
@@ -163,6 +161,7 @@ Set these in `backend/.env` (see `.env.example`):
 | `PAIRING_TTL_SECONDS` | `600` | Lifetime of a pairing code |
 | `SESSION_COOKIE_NAME` | `source_overlap_session` | Anonymous session cookie |
 | `SESSION_COOKIE_SECURE` | `false` | Set true when served over HTTPS |
+| `PROJECT_URL` | GitHub repository | Link shown for connector downloads |
 | `FRONTEND_DIST` | `../frontend/dist` | Static build served by FastAPI |
 | `CACHE_DIR` | `backend/.cache` | Disk cache directory |
 

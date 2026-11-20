@@ -57,10 +57,16 @@
         </span>
       </div>
 
-      <p class="model-note">
-        Install the connector once from the repository:
+      <div class="model-setup">
+        <p>
+          <strong>First time?</strong> The connector is a small Python CLI from
+          the
+          <a :href="projectUrl" target="_blank" rel="noreferrer">
+            Source Overlap GitHub project</a
+          >. Clone or download it, then install it once:
+        </p>
         <code>python -m pip install ./connector</code>
-      </p>
+      </div>
     </template>
 
     <template v-else>
@@ -81,7 +87,7 @@
             :key="model"
             :value="model"
           >
-            {{ model }}
+            {{ modelOptionLabel(model) }}
           </option>
         </select>
         <button
@@ -93,6 +99,14 @@
           Disconnect
         </button>
       </div>
+
+      <p
+        v-if="recommendation"
+        class="model-recommendation"
+        :class="recommendation.tone"
+      >
+        <strong>Model tip:</strong> {{ recommendation.text }}
+      </p>
 
       <p v-if="!status.lm_studio" class="model-warning">
         The connector is running, but LM Studio is not reachable. Start its
@@ -121,6 +135,12 @@ const emit = defineEmits(['pair', 'select', 'disconnect'])
 
 const copied = ref(false)
 
+const projectUrl = computed(
+  () =>
+    props.status.project_url ||
+    'https://github.com/dcallif/source-overlap'
+)
+
 const stateLabel = computed(() => {
   if (!props.status.connected) return 'Not connected'
   if (!props.status.lm_studio) return 'LM Studio offline'
@@ -138,6 +158,48 @@ const minutesLeft = computed(() => {
   const remaining = new Date(props.pairing.expires_at).getTime() - Date.now()
   return Math.max(0, Math.ceil(remaining / 60000))
 })
+
+const recommendation = computed(() => {
+  if (!props.status.models.length) return null
+  const size = modelSize(props.status.model)
+  if (size === null) {
+    return {
+      tone: '',
+      text: '7–14B is the recommended range for a balance of speed and judgment.',
+    }
+  }
+  if (size < 7) {
+    return {
+      tone: 'warn',
+      text: `${size}B is small. Very small models can miss source details; 12B worked well in testing.`,
+    }
+  }
+  if (size <= 14) {
+    return {
+      tone: 'ok',
+      text: `${size}B is in the recommended range; 12B handled source details well in testing.`,
+    }
+  }
+  return {
+    tone: '',
+    text: `${size}B is more reliable on difficult questions, but responses can be much slower.`,
+  }
+})
+
+function modelSize(name) {
+  if (!name) return null
+  const matches = [...name.matchAll(/(\d+(?:\.\d+)?)\s*b\b/gi)]
+  if (!matches.length) return null
+  return Math.max(...matches.map((match) => Number(match[1])))
+}
+
+function modelOptionLabel(model) {
+  const size = modelSize(model)
+  if (size === null) return model
+  if (size < 7) return `${model} — small, may miss details`
+  if (size <= 14) return `${model} — recommended`
+  return `${model} — larger, slower`
+}
 
 async function copyCommand() {
   if (!props.pairing?.command) return
@@ -271,13 +333,26 @@ function chooseModel(event) {
   color: var(--ink-2);
 }
 
-.model-note {
-  margin-top: 12px;
+.model-setup {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--rule);
   font-size: 0.75rem;
+  line-height: 1.55;
   color: var(--ink-2);
 }
 
-.model-note code {
+.model-setup strong {
+  color: var(--ink);
+}
+
+.model-setup a {
+  color: var(--cobalt);
+}
+
+.model-setup code {
+  display: inline-block;
+  margin-top: 6px;
   padding: 2px 5px;
   border: 1px solid var(--rule);
   border-radius: 4px;
@@ -298,6 +373,23 @@ function chooseModel(event) {
   flex: 1 1 280px;
   max-width: 440px;
   min-height: 40px;
+}
+
+.model-recommendation {
+  margin-top: 10px;
+  padding-left: 10px;
+  border-left: 2px solid var(--rule);
+  font-size: 0.75rem;
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+
+.model-recommendation.ok {
+  border-left-color: var(--agree);
+}
+
+.model-recommendation.warn {
+  border-left-color: var(--mixed);
 }
 
 .model-warning {

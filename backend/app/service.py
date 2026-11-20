@@ -19,7 +19,7 @@ async def _noop(_: dict[str, Any]) -> None:
     return None
 
 
-CACHE_VERSION = "3"
+CACHE_VERSION = "4"
 _MEMORY_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
 _MEMORY_CACHE_LIMIT = 128
 
@@ -228,7 +228,6 @@ async def run_pipeline(
         warnings=warnings,
         direct_answer=direct_answer,
     )
-    result["meta"]["disclaimer"] = result["verdict"].get("disclaimer", "")
     if cache_scope is None:
         _write_cache(key, result)
     elif scoped_key is not None:

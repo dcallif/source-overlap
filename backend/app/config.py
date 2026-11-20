@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     cache_ttl_seconds: int = 86400
     cache_dir: Path = BASE_DIR / ".cache"
     frontend_dist: Path = BASE_DIR.parent / "frontend" / "dist"
+    project_url: str = "https://github.com/dcallif/source-overlap"
 
     user_agent: str = (
         "SourceOverlap/0.1 (personal research tool; "

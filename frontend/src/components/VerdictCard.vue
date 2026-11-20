@@ -8,7 +8,6 @@
     <p v-else class="verdict-headline">{{ result.verdict.headline }}</p>
     <p class="verdict-claim">{{ result.verdict.central_claim }}</p>
     <p class="verdict-explanation">{{ result.verdict.explanation }}</p>
-    <p class="verdict-disclaimer">{{ result.verdict.disclaimer }}</p>
   </section>
 </template>
 
@@ -133,16 +132,6 @@ const verdict = computed(() => {
   margin-top: 14px;
   font-size: 0.9375rem;
   line-height: 1.6;
-  color: var(--ink-2);
-  max-width: 62ch;
-}
-
-.verdict-disclaimer {
-  margin-top: 18px;
-  padding-top: 12px;
-  border-top: 1px solid var(--rule);
-  font-size: 0.75rem;
-  line-height: 1.5;
   color: var(--ink-2);
   max-width: 62ch;
 }

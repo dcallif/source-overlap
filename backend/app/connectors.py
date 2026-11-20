@@ -332,6 +332,7 @@ class Session:
             "selected_model": self.selected_model,
             "last_error": connector.last_error if connector else None,
             "requires_connector": settings.require_connector,
+            "project_url": settings.project_url,
         }
 
 

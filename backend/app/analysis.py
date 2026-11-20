@@ -518,10 +518,6 @@ def _build_verdict(
     direct_answer: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     total = len(sources)
-    disclaimer = (
-        "This tool compares what retrieved sources say. It is not a "
-        "fact-checker, and no retrieved coverage is not disproof."
-    )
     if direct_answer and direct_answer.get("answer"):
         agreement = direct_answer.get("agreement")
         answer_key = {
@@ -551,7 +547,6 @@ def _build_verdict(
             "headline": direct_answer["answer"],
             "central_claim": direct_answer.get("summary") or direct_answer["answer"],
             "explanation": explanation,
-            "disclaimer": disclaimer,
             "direct_answer": direct_answer,
         }
     if not claims:
@@ -560,7 +555,6 @@ def _build_verdict(
             "headline": "Nothing to compare",
             "central_claim": "",
             "explanation": "No claims could be extracted from the question.",
-            "disclaimer": disclaimer,
         }
     if total == 0:
         return {
@@ -571,7 +565,6 @@ def _build_verdict(
                 "The search returned no usable sources. Try rephrasing the "
                 "question or using more specific, concrete terms."
             ),
-            "disclaimer": disclaimer,
         }
 
     # Always speak to the most central claim so the verdict answers the actual
@@ -630,10 +623,6 @@ def _build_verdict(
         "headline": headline,
         "central_claim": central["text"],
         "explanation": explanation,
-        "disclaimer": (
-            "This tool compares what retrieved sources say. It is not a "
-            "fact-checker, and no retrieved coverage is not disproof."
-        ),
     }
 
 

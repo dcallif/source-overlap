@@ -127,14 +127,17 @@
 
         <aside class="specimen" aria-label="Example result">
           <p class="specimen-kicker">Example</p>
-          <p class="specimen-claim">Robert Pattinson is the new James Bond.</p>
+          <p class="specimen-claim">
+            NVIDIA released its first GPU in 1999.
+          </p>
           <div class="specimen-strip" aria-hidden="true">
             <span></span><span></span><span></span><span></span>
           </div>
           <div class="specimen-sources" aria-hidden="true">
-            <span>BBC</span><span>Variety</span><span>TheWrap</span><span>EW</span>
+            <span>Wikipedia</span><span>Wccftech</span><span>VideoCardz</span
+            ><span>TechSpot</span>
           </div>
-          <p class="specimen-note">Four independent publishers agree.</p>
+          <p class="specimen-note">Independent publishers agree on 1999.</p>
         </aside>
       </section>
 
@@ -320,10 +323,6 @@
                 <li>Each source is judged against each claim.</li>
                 <li>Agreement counts independent publishers, not links.</li>
               </ol>
-              <p class="method-note">
-                This tool compares what sources say. It is not a fact-checker,
-                and no retrieved coverage is not disproof.
-              </p>
               <div class="method-queries">
                 <p class="method-label">Searched for</p>
                 <ul>
@@ -370,7 +369,6 @@ import { useTheme } from './composables/useTheme'
 
 const examples = [
   'Did the WHO declare coffee a carcinogen?',
-  'Is Robert Pattinson the new James Bond?',
   'In which year did NVIDIA release its first GPU?',
   'What is the current status of the Artemis moon program?',
 ]
@@ -1261,13 +1259,6 @@ main {
   flex-direction: column;
   gap: 8px;
   font-size: 0.8125rem;
-  color: var(--ink-2);
-}
-
-.method-note {
-  margin-top: 14px;
-  font-size: 0.75rem;
-  line-height: 1.55;
   color: var(--ink-2);
 }
 
