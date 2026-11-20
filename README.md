@@ -19,8 +19,9 @@ question
 
 ## What it shows
 
-- **Verdict card** — the central claim, an overall answer
-  (supported / contested / contradicted / thin evidence / no coverage), and
+- **Verdict card** — a direct answer for open questions (for example, a year or
+  name), or the overall answer for yes/no questions
+  (supported / contested / contradicted / thin evidence / no coverage), plus
   coverage/agreement metrics.
 - **Venn diagram** — the three most informative sources as circles; each region
   holds the claims those sources jointly support. Click a region to inspect it.
@@ -149,7 +150,7 @@ Set these in `backend/.env` (see `.env.example`):
 | Variable | Default | Purpose |
 |---|---|---|
 | `LM_STUDIO_URL` | `http://127.0.0.1:1234/v1` | OpenAI-compatible endpoint |
-| `LM_STUDIO_MODEL` | *(first model)* | Force a specific model id |
+| `LM_STUDIO_MODEL` | *(auto)* | Force a model id; otherwise a 7–14B chat model is preferred |
 | `LM_TEMPERATURE` | `0.1` | Lower = more consistent JSON |
 | `LM_TIMEOUT` | `600` | Seconds allowed between streamed tokens |
 | `LM_DISABLE_THINKING` | `true` | Turn off Qwen3 reasoning for fast, clean JSON |

@@ -2,7 +2,10 @@
   <section class="verdict" :class="`tone-${verdict.tone}`">
     <p class="verdict-label">{{ verdict.label }}</p>
     <h1 class="verdict-question">{{ result.question }}</h1>
-    <p class="verdict-headline">{{ result.verdict.headline }}</p>
+    <p v-if="directAnswer" class="verdict-answer">
+      {{ directAnswer.answer }}
+    </p>
+    <p v-else class="verdict-headline">{{ result.verdict.headline }}</p>
     <p class="verdict-claim">{{ result.verdict.central_claim }}</p>
     <p class="verdict-explanation">{{ result.verdict.explanation }}</p>
     <p class="verdict-disclaimer">{{ result.verdict.disclaimer }}</p>
@@ -13,6 +16,10 @@
 import { computed } from 'vue'
 
 const props = defineProps({ result: { type: Object, required: true } })
+
+const directAnswer = computed(
+  () => props.result.verdict.direct_answer || null
+)
 
 const isYesNo = computed(() =>
   /^(is|are|was|were|do|does|did|has|have|had|can|could|will|would|should)\b/i.test(
@@ -33,6 +40,16 @@ const VERDICTS = {
 }
 
 const verdict = computed(() => {
+  if (directAnswer.value) {
+    const agreement = directAnswer.value.agreement
+    const tone =
+      agreement === 'agree'
+        ? 'agree'
+        : agreement === 'disagree'
+          ? 'mixed'
+          : 'unknown'
+    return { tone, label: 'Answer' }
+  }
   const item = VERDICTS[props.result.verdict.answer] || VERDICTS.no_coverage
   return {
     tone: item.tone,
@@ -94,6 +111,14 @@ const verdict = computed(() => {
   font-family: var(--font-serif);
   font-size: 1.5rem;
   line-height: 1.25;
+}
+
+.verdict-answer {
+  margin-top: 18px;
+  font-family: var(--font-serif);
+  font-size: clamp(2rem, 3vw, 3rem);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
 }
 
 .verdict-claim {

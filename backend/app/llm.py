@@ -65,6 +65,16 @@ async def list_models(client: httpx.AsyncClient) -> list[str]:
     return [m.get("id", "") for m in data.get("data", []) if m.get("id")]
 
 
+_MODEL_SIZE_RE = re.compile(r"(?<![\d.])(\d+(?:\.\d+)?)\s*b\b", re.IGNORECASE)
+
+
+def _model_size(name: str) -> float | None:
+    matches = _MODEL_SIZE_RE.findall(name)
+    if not matches:
+        return None
+    return max(float(value) for value in matches)
+
+
 def pick_model(models: list[str]) -> str:
     if not models:
         raise LLMError(
@@ -72,7 +82,30 @@ def pick_model(models: list[str]) -> str:
         )
     # Skip embedding-only models when auto-picking a chat model.
     chat_models = [m for m in models if "embed" not in m.lower()]
-    return (chat_models or models)[0]
+    candidates = chat_models or models
+    sized = [(model, _model_size(model)) for model in candidates]
+    medium = [
+        (model, size)
+        for model, size in sized
+        if size is not None and 7 <= size <= 14
+    ]
+    if medium:
+        return max(medium, key=lambda item: item[1])[0]
+    small = [
+        (model, size)
+        for model, size in sized
+        if size is not None and size < 7
+    ]
+    if small:
+        return max(small, key=lambda item: item[1])[0]
+    large = [
+        (model, size)
+        for model, size in sized
+        if size is not None and size > 14
+    ]
+    if large:
+        return min(large, key=lambda item: item[1])[0]
+    return candidates[0]
 
 
 async def resolve_model(client: httpx.AsyncClient) -> str:

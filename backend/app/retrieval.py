@@ -240,28 +240,47 @@ def _select_diverse(
     max_wiki: int = 2,
 ) -> list[dict[str, Any]]:
     selected: list[dict[str, Any]] = []
+    chosen: set[int] = set()
     per_publisher: dict[str, int] = defaultdict(int)
     wiki_count = 0
+
+    best_wiki = next(
+        (
+            source
+            for source in ranked
+            if source.get("kind") == "encyclopedia"
+            and source.get("relevance", 0.0) >= 0.4
+        ),
+        None,
+    )
+    if best_wiki is not None and max_sources > 0:
+        selected.append(best_wiki)
+        chosen.add(id(best_wiki))
+        per_publisher[_publisher_key(best_wiki)] += 1
+        wiki_count = 1
 
     for source in ranked:
         if len(selected) >= max_sources:
             break
+        if id(source) in chosen:
+            continue
         publisher = _publisher_key(source)
         if per_publisher[publisher] >= max_per_publisher:
             continue
         if source.get("kind") == "encyclopedia" and wiki_count >= max_wiki:
             continue
         selected.append(source)
+        chosen.add(id(source))
         per_publisher[publisher] += 1
         if source.get("kind") == "encyclopedia":
             wiki_count += 1
 
     if len(selected) < max_sources:
-        chosen = {id(source) for source in selected}
         for source in ranked:
             if id(source) in chosen:
                 continue
             selected.append(source)
+            chosen.add(id(source))
             if len(selected) >= max_sources:
                 break
     return selected
@@ -307,43 +326,47 @@ async def search_wikipedia(
     if not titles:
         return []
 
-    try:
-        resp = await client.get(
-            WIKI_API,
-            params={
-                "action": "query",
-                "prop": "extracts",
-                "explaintext": 1,
-                "exsectionformat": "plain",
-                "redirects": 1,
-                "titles": "|".join(titles),
-                "format": "json",
-            },
-            headers=_headers(),
-            timeout=settings.fetch_timeout,
-        )
-        resp.raise_for_status()
-        pages = resp.json().get("query", {}).get("pages", {})
-    except (httpx.HTTPError, ValueError):
-        return []
+    async def fetch_extract(title: str) -> dict[str, Any] | None:
+        try:
+            resp = await client.get(
+                WIKI_API,
+                params={
+                    "action": "query",
+                    "prop": "extracts",
+                    "explaintext": 1,
+                    "exsectionformat": "plain",
+                    "redirects": 1,
+                    "titles": title,
+                    "format": "json",
+                },
+                headers=_headers(),
+                timeout=settings.fetch_timeout,
+            )
+            resp.raise_for_status()
+            pages = resp.json().get("query", {}).get("pages", {})
+        except (httpx.HTTPError, ValueError):
+            return None
 
-    out: list[dict[str, Any]] = []
-    for page in pages.values():
-        title = page.get("title") or ""
-        extract = (page.get("extract") or "").strip()
-        if not title or len(extract) < 120:
-            continue
-        out.append(
-            {
-                "title": title,
+        for page in pages.values():
+            page_title = page.get("title") or title
+            extract = (page.get("extract") or "").strip()
+            if not page_title or len(extract) < 120:
+                return None
+            return {
+                "title": page_title,
                 "publisher": "Wikipedia",
-                "url": "https://en.wikipedia.org/wiki/" + quote(title.replace(" ", "_")),
+                "url": (
+                    "https://en.wikipedia.org/wiki/"
+                    + quote(page_title.replace(" ", "_"))
+                ),
                 "kind": "encyclopedia",
                 "published": None,
                 "text": extract[:9000],
             }
-        )
-    return out
+        return None
+
+    results = await asyncio.gather(*(fetch_extract(title) for title in titles))
+    return [item for item in results if item]
 
 
 def _unwrap_bing(link: str) -> str:

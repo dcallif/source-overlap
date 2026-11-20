@@ -19,7 +19,7 @@ async def _noop(_: dict[str, Any]) -> None:
     return None
 
 
-CACHE_VERSION = "2"
+CACHE_VERSION = "3"
 _MEMORY_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
 _MEMORY_CACHE_LIMIT = 128
 
@@ -115,6 +115,7 @@ async def run_pipeline(
             return cached
 
     started = time.time()
+    direct_answer: dict[str, Any] | None = None
     async with httpx.AsyncClient(
         headers={"User-Agent": settings.user_agent},
         timeout=settings.fetch_timeout,
@@ -164,6 +165,11 @@ async def run_pipeline(
                 "message": (
                     f"Split into {len(claims)} claim(s); "
                     f"searching {len(queries)} query variant(s)"
+                    if claims
+                    else (
+                        "Answering this question directly; "
+                        f"searching {len(queries)} query variant(s)"
+                    )
                 ),
             }
         )
@@ -174,7 +180,7 @@ async def run_pipeline(
 
         stances: list[dict[str, Any]] = []
         warnings: list[str] = []
-        if sources:
+        if sources and claims:
             await emit(
                 {
                     "type": "status",
@@ -187,6 +193,21 @@ async def run_pipeline(
             stances, warnings = await analysis.judge_all(
                 llm_backend, model, sources, claims, emit
             )
+
+        if sources and analysis.is_open_question(question):
+            await emit(
+                {
+                    "type": "status",
+                    "stage": "done",
+                    "message": "Writing a direct answer",
+                }
+            )
+            try:
+                direct_answer = await analysis.answer_question(
+                    llm_backend, model, question, sources
+                )
+            except (llm.LLMError, ValueError):
+                direct_answer = None
 
     elapsed_ms = int((time.time() - started) * 1000)
     result = analysis.aggregate(
@@ -205,6 +226,7 @@ async def run_pipeline(
             "cached": False,
         },
         warnings=warnings,
+        direct_answer=direct_answer,
     )
     result["meta"]["disclaimer"] = result["verdict"].get("disclaimer", "")
     if cache_scope is None:

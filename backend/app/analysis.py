@@ -6,6 +6,32 @@ from typing import Any
 
 from . import llm
 
+_OPEN_QUESTION_RE = re.compile(
+    r"^\s*(?:(?:in|on|at|by|during)\s+)?"
+    r"(?:what|when|where|who|whom|whose|which|why|how)\b",
+    re.IGNORECASE,
+)
+
+_PLACEHOLDER_RE = re.compile(
+    r"\b(?:a|an|the)\s+(?:specific|certain|particular|unknown|unspecified|given)"
+    r"(?:\s+[a-z]+){0,2}\s+"
+    r"(?:year|date|time|day|month|person|name|number|amount|company|country|"
+    r"city|place|entity)\b"
+    r"|\bsome\s+(?:\w+\s+){0,2}"
+    r"(?:year|date|time|person|name|number|amount|company|country|city|place|"
+    r"entity)\b",
+    re.IGNORECASE,
+)
+
+
+def is_open_question(question: str) -> bool:
+    return bool(_OPEN_QUESTION_RE.match(question.strip()))
+
+
+def _is_placeholder_claim(text: str) -> bool:
+    return bool(_PLACEHOLDER_RE.search(text))
+
+
 DECOMPOSE_SYSTEM = """You are a precise research analyst. Given a user's question, \
 decompose it into atomic factual claims that a source could separately support or \
 contradict, and propose 3-4 short web search queries that would find relevant sources.
@@ -107,6 +133,44 @@ def stance_schema(claim_ids: list[str]) -> dict[str, Any]:
     }
 
 
+ANSWER_SYSTEM = """You answer a user's question using ONLY the supplied sources. \
+Give the specific value the question asks for (a year, name, number, place, or status) \
+when the sources state it.
+
+Rules:
+- If the sources do not state the answer, return an empty string for "answer" and use \
+"unclear" for "agreement". Do not call that a disagreement.
+- Only use "disagree" when the sources give conflicting answers.
+- "summary" is one sentence that directly answers the question and names the key entity.
+- Use only source ids from the provided list. Prefer ids that explicitly state the answer.
+- Return at least one source id whenever "answer" is not empty.
+- Never use outside knowledge. Never answer with a question or a placeholder.
+- "confidence" is 0.0-1.0.
+
+Return ONLY JSON in this shape:
+{"answer":"...","summary":"...","agreement":"agree","source_ids":["s1"],"confidence":0.8}"""
+
+ANSWER_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "answer": {"type": "string"},
+        "summary": {"type": "string"},
+        "agreement": {
+            "type": "string",
+            "enum": ["agree", "disagree", "unclear"],
+        },
+        "source_ids": {"type": "array", "items": {"type": "string"}},
+        "confidence": {"type": "number"},
+    },
+    "required": ["answer", "summary", "agreement", "source_ids", "confidence"],
+    "additionalProperties": False,
+}
+
+
+def _normalize_text(value: Any, limit: int) -> str:
+    return " ".join(str(value or "").split())[:limit]
+
+
 def _norm_stance(value: Any) -> str:
     text = str(value or "").strip().lower()
     if text in {"supports", "support", "true", "yes", "confirms", "confirmed", "affirms", "agree"}:
@@ -151,7 +215,7 @@ def _normalize_claims(payload: Any) -> list[dict[str, Any]]:
         else:
             continue
         text = " ".join(str(text).split())
-        if len(text) < 8:
+        if len(text) < 8 or _is_placeholder_claim(text):
             continue
         claims.append(
             {
@@ -215,8 +279,6 @@ async def decompose(
         schema=DECOMPOSE_SCHEMA,
     )
     claims = _normalize_claims(payload)
-    if not claims:
-        claims = [{"id": "c1", "text": question, "centrality": 1.0}]
     queries = _normalize_queries(payload, question)
     return claims, queries
 
@@ -308,6 +370,75 @@ async def judge_source(
     )
 
 
+async def answer_question(
+    backend: llm.LLMBackend,
+    model: str,
+    question: str,
+    sources: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    blocks: list[str] = []
+    for source in sources[:8]:
+        text = " ".join(str(source.get("text") or "").split())[:1600]
+        published = source.get("published") or "date unknown"
+        blocks.append(
+            f"[{source['id']}] {source['publisher']} ({published})\n"
+            f"Title: {source['title']}\n{text}"
+        )
+    if not blocks:
+        return None
+
+    user = f"QUESTION: {question}\n\nSOURCES:\n\n" + "\n\n".join(blocks)
+    payload = await backend.chat_json(
+        model,
+        ANSWER_SYSTEM,
+        user,
+        max_tokens=500,
+        schema=ANSWER_SCHEMA,
+    )
+    if not isinstance(payload, dict):
+        return None
+
+    answer = _normalize_text(payload.get("answer"), 160)
+    if not answer:
+        return None
+    summary = _normalize_text(payload.get("summary"), 600) or answer
+    agreement = str(payload.get("agreement") or "unclear").lower()
+    if agreement not in {"agree", "disagree", "unclear"}:
+        agreement = "unclear"
+
+    valid_ids = {source["id"] for source in sources}
+    source_ids: list[str] = []
+    for item in payload.get("source_ids") or []:
+        source_id = str(item)
+        if source_id in valid_ids and source_id not in source_ids:
+            source_ids.append(source_id)
+
+    answer_lower = answer.lower()
+    if not answer_lower.startswith("sources disagree") and len(answer) >= 3:
+        for source in sources:
+            if source["id"] in source_ids:
+                continue
+            if answer_lower in str(source.get("text") or "").lower():
+                source_ids.append(source["id"])
+
+    if not source_ids:
+        return None
+    if answer_lower.startswith("sources disagree"):
+        if agreement == "unclear":
+            return None
+        agreement = "disagree"
+    elif agreement == "unclear" and len(source_ids) >= 2:
+        agreement = "agree"
+
+    return {
+        "answer": answer,
+        "summary": summary,
+        "agreement": agreement,
+        "source_ids": source_ids,
+        "confidence": _clamp(payload.get("confidence"), 0.5),
+    }
+
+
 def _publisher_key(source: dict[str, Any]) -> str:
     return " ".join(str(source.get("publisher") or "").split()).lower()
 
@@ -384,12 +515,45 @@ def _build_venn(
 def _build_verdict(
     sources: list[dict[str, Any]],
     claims: list[dict[str, Any]],
+    direct_answer: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     total = len(sources)
     disclaimer = (
         "This tool compares what retrieved sources say. It is not a "
         "fact-checker, and no retrieved coverage is not disproof."
     )
+    if direct_answer and direct_answer.get("answer"):
+        agreement = direct_answer.get("agreement")
+        answer_key = {
+            "agree": "supported",
+            "disagree": "contested",
+        }.get(agreement, "insufficient_evidence")
+        cited = len(direct_answer.get("source_ids") or [])
+        if agreement == "agree":
+            if cited == 1:
+                explanation = "1 retrieved source points to this answer."
+            elif cited > 1:
+                explanation = (
+                    f"{cited} retrieved sources point to this answer."
+                )
+            else:
+                explanation = "The retrieved sources point to this answer."
+        elif agreement == "disagree":
+            explanation = (
+                "The retrieved sources disagree, so this answer is not settled."
+            )
+        else:
+            explanation = (
+                "The retrieved sources do not clearly settle this question."
+            )
+        return {
+            "answer": answer_key,
+            "headline": direct_answer["answer"],
+            "central_claim": direct_answer.get("summary") or direct_answer["answer"],
+            "explanation": explanation,
+            "disclaimer": disclaimer,
+            "direct_answer": direct_answer,
+        }
     if not claims:
         return {
             "answer": "no_coverage",
@@ -480,7 +644,32 @@ def aggregate(
     stances: list[dict[str, Any]],
     meta: dict[str, Any],
     warnings: list[str] | None = None,
+    direct_answer: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    if direct_answer and direct_answer.get("answer") and not claims:
+        valid_ids = {source["id"] for source in sources}
+        cited = [
+            source_id
+            for source_id in direct_answer.get("source_ids") or []
+            if source_id in valid_ids
+        ]
+        summary = _normalize_text(
+            direct_answer.get("summary") or direct_answer["answer"], 400
+        )
+        if cited and len(summary) >= 8:
+            claims = [{"id": "c1", "text": summary, "centrality": 1.0}]
+            stances = [
+                {
+                    "source_id": source_id,
+                    "claim_id": "c1",
+                    "stance": "supports",
+                    "confidence": direct_answer.get("confidence", 0.5),
+                    "quote": "",
+                    "quote_verified": False,
+                }
+                for source_id in cited
+            ]
+
     by_claim: dict[str, list[dict[str, Any]]] = {c["id"]: [] for c in claims}
     for stance in stances:
         by_claim.setdefault(stance["claim_id"], []).append(stance)
@@ -567,7 +756,8 @@ def aggregate(
         "claims": enriched_claims,
         "sources": sources,
         "stances": stances,
-        "verdict": _build_verdict(sources, enriched_claims),
+        "verdict": _build_verdict(sources, enriched_claims, direct_answer),
+        "direct_answer": direct_answer,
         "venn": _build_venn(sources, enriched_claims),
         "metrics": {
             "sources": len(sources),
