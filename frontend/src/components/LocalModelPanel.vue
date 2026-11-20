@@ -175,7 +175,7 @@ function chooseModel(event) {
 }
 
 .model-kicker {
-  font-size: 11px;
+  font-size: 0.6875rem;
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -184,14 +184,14 @@ function chooseModel(event) {
 
 .model-head h2 {
   margin-top: 4px;
-  font-size: 22px;
+  font-size: 1.375rem;
 }
 
 .model-pill {
   border: 1px solid var(--rule);
   border-radius: 999px;
   padding: 3px 9px;
-  font-size: 11px;
+  font-size: 0.6875rem;
   font-weight: 600;
   color: var(--ink-2);
   white-space: nowrap;
@@ -210,7 +210,7 @@ function chooseModel(event) {
 .model-copy {
   margin-top: 12px;
   max-width: 62ch;
-  font-size: 14px;
+  font-size: 0.875rem;
   line-height: 1.6;
   color: var(--ink-2);
 }
@@ -231,19 +231,19 @@ function chooseModel(event) {
   border-radius: var(--radius);
   background: var(--paper);
   color: var(--ink);
-  font-size: 12px;
+  font-size: 0.75rem;
   white-space: nowrap;
 }
 
 .command-copy {
   min-height: 40px;
   padding: 0 14px;
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 
 .model-meta {
   margin-top: 9px;
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--ink-2);
 }
 
@@ -263,17 +263,17 @@ function chooseModel(event) {
 
 .model-actions .button {
   min-height: 40px;
-  font-size: 13px;
+  font-size: 0.8125rem;
 }
 
 .model-hint {
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--ink-2);
 }
 
 .model-note {
   margin-top: 12px;
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--ink-2);
 }
 
@@ -283,7 +283,7 @@ function chooseModel(event) {
   border-radius: 4px;
   background: var(--paper);
   color: var(--ink);
-  font-size: 11px;
+  font-size: 0.6875rem;
 }
 
 .model-live {
@@ -302,7 +302,7 @@ function chooseModel(event) {
 
 .model-warning {
   margin-top: 10px;
-  font-size: 13px;
+  font-size: 0.8125rem;
   line-height: 1.55;
   color: var(--disagree);
 }

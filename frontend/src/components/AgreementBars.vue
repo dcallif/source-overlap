@@ -201,17 +201,17 @@ function stanceLabel(stance) {
 }
 
 .section-head h2 {
-  font-size: 26px;
+  font-size: 1.625rem;
 }
 
 .section-head p {
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: var(--ink-2);
   max-width: 46ch;
 }
 
 .empty {
-  font-size: 14px;
+  font-size: 0.875rem;
   color: var(--ink-2);
   padding: 18px 0;
 }
@@ -230,13 +230,13 @@ function stanceLabel(stance) {
 }
 
 .claim-head h3 {
-  font-size: 20px;
+  font-size: 1.25rem;
   line-height: 1.35;
   max-width: 52ch;
 }
 
 .claim-summary {
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 600;
   white-space: nowrap;
 }
@@ -313,7 +313,7 @@ function stanceLabel(stance) {
 }
 
 .seg-letter {
-  font-size: 10px;
+  font-size: 0.625rem;
   font-weight: 600;
   color: var(--ink-2);
   border: 1px solid var(--rule);
@@ -322,7 +322,7 @@ function stanceLabel(stance) {
 }
 
 .seg-publisher {
-  font-size: 12px;
+  font-size: 0.75rem;
   max-width: 30ch;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -330,7 +330,7 @@ function stanceLabel(stance) {
 }
 
 .seg-mark {
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 700;
 }
 
@@ -369,12 +369,12 @@ function stanceLabel(stance) {
 }
 
 .evidence-publisher {
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 600;
 }
 
 .evidence-stance {
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--ink-2);
 }
 
@@ -382,26 +382,26 @@ blockquote {
   margin: 10px 0 0;
   font-family: var(--font-serif);
   font-style: italic;
-  font-size: 17px;
+  font-size: 1.0625rem;
   line-height: 1.5;
   max-width: 58ch;
 }
 
 .evidence-empty {
   margin-top: 8px;
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: var(--ink-2);
 }
 
 .evidence-note {
   margin-top: 8px;
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--mixed);
 }
 
 .evidence a {
   display: inline-block;
   margin-top: 10px;
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 </style>

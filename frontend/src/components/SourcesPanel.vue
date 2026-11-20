@@ -98,17 +98,17 @@ function fmtDate(iso) {
 }
 
 .section-head h2 {
-  font-size: 26px;
+  font-size: 1.625rem;
 }
 
 .section-head p {
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: var(--ink-2);
   max-width: 46ch;
 }
 
 .empty {
-  font-size: 14px;
+  font-size: 0.875rem;
   color: var(--ink-2);
   padding: 18px 0;
 }
@@ -145,7 +145,7 @@ function fmtDate(iso) {
 }
 
 .source-letter {
-  font-size: 10px;
+  font-size: 0.625rem;
   font-weight: 600;
   color: var(--ink-2);
   border: 1px solid var(--rule);
@@ -154,19 +154,19 @@ function fmtDate(iso) {
 }
 
 .source-publisher {
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 600;
 }
 
 .source-top time {
   margin-left: auto;
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--ink-2);
 }
 
 .source-title {
   margin-top: 6px;
-  font-size: 19px;
+  font-size: 1.1875rem;
   line-height: 1.35;
   max-width: 62ch;
 }
@@ -184,7 +184,7 @@ function fmtDate(iso) {
 
 .source-snippet {
   margin-top: 6px;
-  font-size: 14px;
+  font-size: 0.875rem;
   line-height: 1.6;
   color: var(--ink-2);
   max-width: 70ch;
@@ -192,7 +192,7 @@ function fmtDate(iso) {
 
 .source-stance {
   margin-top: 8px;
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 600;
 }
 

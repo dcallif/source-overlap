@@ -65,7 +65,7 @@ const verdict = computed(() => {
 
 .verdict-label {
   font-family: var(--font-sans);
-  font-size: 14px;
+  font-size: 0.875rem;
   font-weight: 600;
   color: var(--ink-2);
   margin-bottom: 10px;
@@ -84,7 +84,7 @@ const verdict = computed(() => {
 }
 
 .verdict-question {
-  font-size: clamp(28px, 4vw, 40px);
+  font-size: clamp(1.75rem, 4vw, 2.5rem);
   font-weight: 500;
   max-width: 22ch;
 }
@@ -92,21 +92,21 @@ const verdict = computed(() => {
 .verdict-headline {
   margin-top: 18px;
   font-family: var(--font-serif);
-  font-size: 24px;
+  font-size: 1.5rem;
   line-height: 1.25;
 }
 
 .verdict-claim {
   margin-top: 10px;
   font-family: var(--font-serif);
-  font-size: 19px;
+  font-size: 1.1875rem;
   line-height: 1.45;
   max-width: 52ch;
 }
 
 .verdict-explanation {
   margin-top: 14px;
-  font-size: 15px;
+  font-size: 0.9375rem;
   line-height: 1.6;
   color: var(--ink-2);
   max-width: 62ch;
@@ -116,7 +116,7 @@ const verdict = computed(() => {
   margin-top: 18px;
   padding-top: 12px;
   border-top: 1px solid var(--rule);
-  font-size: 12px;
+  font-size: 0.75rem;
   line-height: 1.5;
   color: var(--ink-2);
   max-width: 62ch;

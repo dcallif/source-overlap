@@ -736,7 +736,7 @@ main {
 .site-footer p {
   margin: 0;
   max-width: 70ch;
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--ink-2);
 }
 
@@ -792,7 +792,7 @@ main {
   color: var(--ink);
   text-decoration: none;
   font-family: var(--font-serif);
-  font-size: 20px;
+  font-size: 1.25rem;
   font-weight: 600;
   letter-spacing: -0.01em;
 }
@@ -841,7 +841,7 @@ main {
   background: none;
   padding: 4px 0;
   color: var(--ink-2);
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 
 .health .dot {
@@ -874,13 +874,13 @@ main {
 .hero {
   display: grid;
   grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.65fr);
-  gap: 56px;
+  gap: clamp(32px, 4vw, 72px);
   align-items: end;
-  padding: 72px 0 64px;
+  padding: clamp(48px, 5vw, 88px) 0 clamp(40px, 4.2vw, 80px);
 }
 
 .hero-copy h1 {
-  font-size: clamp(38px, 6vw, 64px);
+  font-size: clamp(2.375rem, 6vw, 4rem);
   line-height: 0.98;
   letter-spacing: -0.03em;
   max-width: 12ch;
@@ -888,21 +888,21 @@ main {
 
 .lede {
   margin-top: 18px;
-  font-size: 17px;
+  font-size: 1.0625rem;
   line-height: 1.6;
   color: var(--ink-2);
   max-width: 46ch;
 }
 
 .ask {
-  margin-top: 30px;
+  margin-top: 1.875rem;
 }
 
 .field-label {
   display: block;
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 600;
-  margin-bottom: 8px;
+  margin-bottom: 0.5rem;
 }
 
 .ask-row {
@@ -920,13 +920,13 @@ main {
 }
 
 .hint {
-  margin-top: 8px;
-  font-size: 12px;
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
   color: var(--ink-2);
 }
 
 .examples {
-  margin-top: 28px;
+  margin-top: 1.75rem;
   display: flex;
   flex-wrap: wrap;
   gap: 8px 18px;
@@ -934,7 +934,7 @@ main {
 }
 
 .examples-label {
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: var(--ink-2);
 }
 
@@ -944,7 +944,7 @@ main {
   background: none;
   padding: 4px 0;
   color: var(--ink);
-  font-size: 14px;
+  font-size: 0.875rem;
   text-align: left;
 }
 
@@ -966,14 +966,14 @@ main {
 }
 
 .specimen-kicker {
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--ink-2);
   margin-bottom: 14px;
 }
 
 .specimen-claim {
   font-family: var(--font-serif);
-  font-size: 22px;
+  font-size: 1.375rem;
   line-height: 1.3;
 }
 
@@ -1006,13 +1006,13 @@ main {
   justify-content: space-between;
   gap: 8px;
   margin-top: 10px;
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--ink-2);
 }
 
 .specimen-note {
   margin-top: 16px;
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 600;
   color: var(--agree);
 }
@@ -1025,7 +1025,7 @@ main {
 
 .landing-method-title {
   font-family: var(--font-serif);
-  font-size: 22px;
+  font-size: 1.375rem;
   font-weight: 500;
   margin-bottom: 18px;
 }
@@ -1043,14 +1043,14 @@ main {
 }
 
 .method-points dt {
-  font-size: 14px;
+  font-size: 0.875rem;
   font-weight: 600;
 }
 
 .method-points dd {
   margin: 5px 0 0;
   max-width: 34ch;
-  font-size: 13px;
+  font-size: 0.8125rem;
   line-height: 1.55;
   color: var(--ink-2);
 }
@@ -1058,8 +1058,8 @@ main {
 .ask-compact {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 24px 0 0;
+  gap: 1rem;
+  padding: 1.5rem 0 0;
   flex-wrap: wrap;
 }
 
@@ -1074,24 +1074,24 @@ main {
 }
 
 .ask-compact .ask-row {
-  max-width: 820px;
+  max-width: 52rem;
 }
 
 .notice {
-  margin: 32px 0;
-  padding: 20px 22px;
+  margin: 2rem 0;
+  padding: 1.25rem 1.375rem;
   border-left: 3px solid var(--disagree);
   background: var(--surface);
-  max-width: 720px;
+  max-width: 45rem;
 }
 
 .notice-title {
-  font-size: 24px;
+  font-size: 1.5rem;
   margin-bottom: 8px;
 }
 
 .notice p {
-  font-size: 14px;
+  font-size: 0.875rem;
   line-height: 1.6;
   color: var(--ink-2);
 }
@@ -1103,7 +1103,7 @@ main {
 .notice-steps ol {
   margin: 6px 0 0;
   padding-left: 18px;
-  font-size: 14px;
+  font-size: 0.875rem;
   color: var(--ink-2);
   display: flex;
   flex-direction: column;
@@ -1111,12 +1111,12 @@ main {
 }
 
 .progress {
-  padding: 48px 0 64px;
-  max-width: 620px;
+  padding: 3rem 0 4rem;
+  max-width: 38.75rem;
 }
 
 .progress-title {
-  font-size: 28px;
+  font-size: 1.75rem;
   margin-bottom: 22px;
 }
 
@@ -1156,7 +1156,7 @@ main {
 }
 
 .stage-label {
-  font-size: 15px;
+  font-size: 0.9375rem;
   color: var(--ink-2);
 }
 
@@ -1171,15 +1171,15 @@ main {
 
 .stage-detail {
   grid-column: 2;
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--ink-2);
 }
 
 .results {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 300px;
-  gap: 56px;
-  padding: 36px 0 80px;
+  grid-template-columns: minmax(0, 1fr) clamp(300px, 18vw, 380px);
+  gap: clamp(32px, 3.5vw, 64px);
+  padding: clamp(28px, 3vw, 56px) 0 clamp(56px, 5vw, 96px);
   align-items: start;
 }
 
@@ -1202,7 +1202,7 @@ main {
 
 .rail-title {
   font-family: var(--font-sans);
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 600;
   color: var(--ink-2);
   margin-bottom: 12px;
@@ -1222,20 +1222,20 @@ main {
 }
 
 .stats dt {
-  font-size: 11px;
+  font-size: 0.6875rem;
   color: var(--ink-2);
 }
 
 .stats dd {
   margin: 0;
-  font-size: 18px;
+  font-size: 1.125rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
 .method summary {
   cursor: pointer;
-  font-size: 14px;
+  font-size: 0.875rem;
   font-weight: 600;
   list-style: none;
 }
@@ -1260,13 +1260,13 @@ main {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: var(--ink-2);
 }
 
 .method-note {
   margin-top: 14px;
-  font-size: 12px;
+  font-size: 0.75rem;
   line-height: 1.55;
   color: var(--ink-2);
 }
@@ -1276,7 +1276,7 @@ main {
 }
 
 .method-label {
-  font-size: 11px;
+  font-size: 0.6875rem;
   color: var(--ink-2);
   margin-bottom: 4px;
 }
@@ -1284,7 +1284,7 @@ main {
 .method-queries ul {
   margin: 0;
   padding-left: 16px;
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--ink-2);
 }
 
@@ -1294,7 +1294,7 @@ main {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--ink-2);
 }
 

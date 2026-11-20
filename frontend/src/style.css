@@ -21,8 +21,8 @@
   --unknown-soft: #e3e6e0;
   --font-serif: "Newsreader", Georgia, "Times New Roman", serif;
   --font-sans: "Archivo", "Helvetica Neue", Arial, sans-serif;
-  --maxw: 1180px;
-  --gutter: 24px;
+  --maxw: clamp(1180px, 92vw, 1960px);
+  --gutter: clamp(18px, 1.8vw, 40px);
   --radius: 3px;
   color-scheme: light;
 }
@@ -57,6 +57,7 @@
 
 html {
   -webkit-text-size-adjust: 100%;
+  font-size: clamp(16px, 0.55vw + 8px, 21px);
 }
 
 body {
@@ -64,7 +65,7 @@ body {
   background: var(--paper);
   color: var(--ink);
   font-family: var(--font-sans);
-  font-size: 16px;
+  font-size: 1rem;
   line-height: 1.5;
   min-height: 100vh;
 }
@@ -136,14 +137,14 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 44px;
-  padding: 0 18px;
+  min-height: 2.75rem;
+  padding: 0 1.125rem;
   border: 1px solid var(--ink);
   border-radius: var(--radius);
   background: transparent;
   color: var(--ink);
   font-family: var(--font-sans);
-  font-size: 14px;
+  font-size: 0.875rem;
   font-weight: 600;
   white-space: nowrap;
   text-decoration: none;
@@ -183,19 +184,19 @@ button {
   background: none;
   padding: 0;
   color: var(--cobalt);
-  font-size: 14px;
+  font-size: 0.875rem;
   text-decoration: underline;
   text-underline-offset: 3px;
 }
 
 .field {
-  min-height: 44px;
+  min-height: 2.75rem;
   width: 100%;
   border: 1px solid var(--rule-strong);
   border-radius: var(--radius);
   background: var(--surface);
   color: var(--ink);
-  padding: 0 14px;
+  padding: 0 0.875rem;
 }
 
 .field::placeholder {
@@ -208,7 +209,7 @@ button {
 
 select.field {
   width: auto;
-  padding-right: 34px;
+  padding-right: 2.125rem;
 }
 
 html[data-theme="dark"] .brand-mark i {
