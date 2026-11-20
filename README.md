@@ -121,9 +121,8 @@ You can also create the service manually:
 run it on the computer with LM Studio:
 
 ```powershell
-cd connector
-python -m pip install .
-source-overlap-connect --server https://YOUR-APP.onrender.com --code ABCD-1234
+python -m pip install ./connector
+python -m source_overlap_connector --server https://YOUR-APP.onrender.com --code ABCD-1234
 ```
 
 Use a new pairing code each time the code expires or the service restarts.

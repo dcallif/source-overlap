@@ -31,8 +31,12 @@ pipx install .\connector
 2. Run the command shown on the site, for example:
 
 ```powershell
-source-overlap-connect --server https://source-overlap.onrender.com --code ABCD-1234
+python -m source_overlap_connector --server https://source-overlap.onrender.com --code ABCD-1234
 ```
+
+The shorter `source-overlap-connect` command works too, but only if Python's
+user `Scripts` folder is on `PATH`. The `python -m` form always works after the
+install above.
 
 3. Keep the terminal open while you use the app. Press `Ctrl+C` to stop.
 

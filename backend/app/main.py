@@ -178,7 +178,7 @@ async def session_pairing(
         "expires_at": connectors.pairing_expiry_iso(expires),
         "connector_url": connector_url,
         "command": (
-            f"source-overlap-connect --server {origin} --code {code}"
+            f"python -m source_overlap_connector --server {origin} --code {code}"
         ),
     }
 
