@@ -20,6 +20,17 @@ class Settings(BaseSettings):
     lm_timeout: float = 600.0
     lm_disable_thinking: bool = True
 
+    # auto: connector > local LM Studio > public fallback
+    # local: LM Studio only; public: public LLM only
+    llm_provider: str = "auto"
+    public_llm_enabled: bool = True
+    public_llm_url: str = "https://text.pollinations.ai/openai"
+    public_llm_model: str = "openai-fast"
+    public_llm_label: str = "Pollinations"
+    public_llm_api_key: str = ""
+    public_llm_timeout: float = 120.0
+    local_probe_timeout: float = 1.5
+
     max_sources: int = 6
     fetch_timeout: float = 20.0
     enable_bing_news: bool = True

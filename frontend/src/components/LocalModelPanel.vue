@@ -1,6 +1,6 @@
 <template>
   <section
-    v-if="status.requires_connector || status.connected"
+    v-if="status.requires_connector || status.connected || usingPublic"
     class="local-model"
     aria-labelledby="local-model-title"
   >
@@ -19,6 +19,11 @@
     </div>
 
     <template v-if="!status.connected">
+      <p v-if="usingPublic" class="model-public-note">
+        You are using a public model right now. Connecting your own keeps
+        questions and source text on your machine.
+      </p>
+
       <p class="model-copy">
         Run the connector on the computer where LM Studio is running. It
         connects out to this site, so you do not need to open any ports.
@@ -129,6 +134,7 @@ const props = defineProps({
   status: { type: Object, required: true },
   pairing: { type: Object, default: null },
   loading: { type: Boolean, default: false },
+  usingPublic: { type: Boolean, default: false },
 })
 
 const emit = defineEmits(['pair', 'select', 'disconnect'])
@@ -142,7 +148,10 @@ const projectUrl = computed(
 )
 
 const stateLabel = computed(() => {
-  if (!props.status.connected) return 'Not connected'
+  if (!props.status.connected) {
+    if (props.usingPublic) return 'Using public model'
+    return 'Not connected'
+  }
   if (!props.status.lm_studio) return 'LM Studio offline'
   if (!props.status.models.length) return 'No model loaded'
   return 'Connected'
@@ -275,6 +284,16 @@ function chooseModel(event) {
   font-size: 0.875rem;
   line-height: 1.6;
   color: var(--ink-2);
+}
+
+.model-public-note {
+  margin-top: 12px;
+  padding: 8px 10px;
+  border-left: 2px solid var(--mixed);
+  background: var(--mixed-soft);
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  color: var(--ink);
 }
 
 .command-row {

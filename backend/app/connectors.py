@@ -332,6 +332,8 @@ class Session:
             "selected_model": self.selected_model,
             "last_error": connector.last_error if connector else None,
             "requires_connector": settings.require_connector,
+            "llm_provider": settings.llm_provider,
+            "public_llm": llm.public_info(),
             "project_url": settings.project_url,
         }
 

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import re
+import time
 from typing import Any, AsyncIterator, Protocol
 
 import httpx
@@ -114,6 +116,63 @@ async def resolve_model(client: httpx.AsyncClient) -> str:
     return pick_model(await list_models(client))
 
 
+_LOCAL_PROBE_TTL = 10.0
+_LOCAL_PROBE_CACHE: tuple[float, bool] | None = None
+_LOCAL_PROBE_LOCK = asyncio.Lock()
+
+
+async def local_ready(force: bool = False) -> bool:
+    """True when LM Studio is reachable and has a chat model loaded."""
+    global _LOCAL_PROBE_CACHE
+    now = time.monotonic()
+    if not force and _LOCAL_PROBE_CACHE:
+        cached_at, ready = _LOCAL_PROBE_CACHE
+        if now - cached_at < _LOCAL_PROBE_TTL:
+            return ready
+
+    async with _LOCAL_PROBE_LOCK:
+        now = time.monotonic()
+        if not force and _LOCAL_PROBE_CACHE:
+            cached_at, ready = _LOCAL_PROBE_CACHE
+            if now - cached_at < _LOCAL_PROBE_TTL:
+                return ready
+
+        ready = False
+        try:
+            async with httpx.AsyncClient(
+                timeout=settings.local_probe_timeout
+            ) as client:
+                resp = await client.get(
+                    f"{_normalize_base(settings.lm_studio_url)}/models"
+                )
+                resp.raise_for_status()
+                data = resp.json()
+            models = [
+                m.get("id", "") for m in data.get("data", []) if m.get("id")
+            ]
+            ready = any(
+                "embed" not in str(model).lower() for model in models
+            )
+        except (httpx.HTTPError, ValueError):
+            ready = False
+
+        _LOCAL_PROBE_CACHE = (now, ready)
+        return ready
+
+
+def public_info() -> dict[str, Any]:
+    return {
+        "enabled": bool(
+            settings.public_llm_enabled
+            and settings.public_llm_url
+            and settings.public_llm_model
+        ),
+        "label": settings.public_llm_label,
+        "model": settings.public_llm_model,
+        "url": settings.public_llm_url,
+    }
+
+
 def build_payload(
     model: str,
     system: str,
@@ -197,13 +256,22 @@ async def consume_chat_chunks(
 
 
 async def _stream_chat(
-    client: httpx.AsyncClient, payload: dict[str, Any], timeout: httpx.Timeout
+    client: httpx.AsyncClient,
+    payload: dict[str, Any],
+    timeout: httpx.Timeout,
+    *,
+    url: str | None = None,
+    headers: dict[str, str] | None = None,
 ) -> str:
+    target = url or (
+        f"{_normalize_base(settings.lm_studio_url)}/chat/completions"
+    )
     async with client.stream(
         "POST",
-        f"{_normalize_base(settings.lm_studio_url)}/chat/completions",
+        target,
         json=payload,
         timeout=timeout,
+        headers=headers,
     ) as resp:
         if resp.status_code >= 400:
             body = (await resp.aread())[:500].decode("utf-8", "replace")
@@ -213,6 +281,24 @@ async def _stream_chat(
         return await consume_chat_chunks(content_type, resp.aiter_text())
 
 
+_RETRYABLE_STATUS = {429, 502, 503, 504}
+_PUBLIC_LOCK = asyncio.Lock()
+
+
+def _http_error(label: str, exc: BadRequest) -> str:
+    if exc.status == 429:
+        return (
+            f"{label} (public model) is rate-limited right now (HTTP 429). "
+            "Wait a moment and try again, or connect a local model."
+        )
+    if exc.status == 402:
+        return (
+            f"{label} (public model) rejected the request (HTTP 402). "
+            "The public endpoint may require a key or be unavailable."
+        )
+    return f"{label} (public model) returned HTTP {exc.status}: {exc.body}"
+
+
 async def chat(
     client: httpx.AsyncClient,
     model: str,
@@ -220,50 +306,80 @@ async def chat(
     user: str,
     max_tokens: int = 1200,
     schema: dict[str, Any] | None = None,
+    *,
+    url: str | None = None,
+    headers: dict[str, str] | None = None,
+    label: str = "LM Studio",
+    timeout_seconds: float | None = None,
 ) -> str:
     payload = build_payload(model, system, user, max_tokens, schema)
-    timeout = httpx.Timeout(settings.lm_timeout, connect=15.0)
-    try:
-        content = await _stream_chat(client, payload, timeout)
-    except BadRequest as exc:
-        # Fall back gracefully if the server rejects optional fields.
-        adjusted = fallback_payload(payload, exc.body)
-        if adjusted is None:
-            raise LLMError(
-                f"LM Studio returned HTTP {exc.status}: {exc.body}"
-            ) from exc
+    seconds = timeout_seconds or settings.lm_timeout
+    timeout = httpx.Timeout(seconds, connect=15.0)
+
+    attempt_payload = payload
+    fallback_used = False
+    retry_count = 0
+
+    while True:
         try:
-            content = await _stream_chat(client, adjusted, timeout)
-        except BadRequest as retry_exc:
-            raise LLMError(
-                f"LM Studio returned HTTP {retry_exc.status}: {retry_exc.body}"
-            ) from retry_exc
-        except httpx.ReadTimeout as retry_exc:
-            raise LLMError(timeout_message()) from retry_exc
-        except httpx.HTTPError as retry_exc:
-            raise LLMError(_connection_message(retry_exc)) from retry_exc
-    except httpx.ReadTimeout as exc:
-        raise LLMError(timeout_message()) from exc
-    except httpx.HTTPError as exc:
-        raise LLMError(_connection_message(exc)) from exc
+            content = await _stream_chat(
+                client,
+                attempt_payload,
+                timeout,
+                url=url,
+                headers=headers,
+            )
+            break
+        except BadRequest as exc:
+            if exc.status in _RETRYABLE_STATUS and retry_count < 2:
+                retry_count += 1
+                await asyncio.sleep(3.0 * retry_count)
+                continue
+            if not fallback_used:
+                adjusted = fallback_payload(
+                    attempt_payload, exc.body
+                )
+                if adjusted is not None:
+                    fallback_used = True
+                    attempt_payload = adjusted
+                    continue
+            raise LLMError(_http_error(label, exc)) from exc
+        except httpx.ReadTimeout as exc:
+            raise LLMError(timeout_message(label, seconds)) from exc
+        except httpx.HTTPError as exc:
+            raise LLMError(_connection_message(exc, label)) from exc
 
     if not content:
-        raise LLMError("LM Studio returned an empty response.")
+        raise LLMError(f"{label} returned an empty response.")
     return content
 
 
-def timeout_message() -> str:
+def timeout_message(
+    label: str = "LM Studio", seconds: float | None = None
+) -> str:
+    wait = int(seconds or settings.lm_timeout)
+    if label == "LM Studio":
+        return (
+            f"LM Studio stopped sending tokens for {wait}s. "
+            "The model may still be loading or be too large for this machine. "
+            "Try a smaller model, or raise LM_TIMEOUT in backend/.env."
+        )
     return (
-        f"LM Studio stopped sending tokens for {int(settings.lm_timeout)}s. "
-        "The model may still be loading or be too large for this machine. "
-        "Try a smaller model, or raise LM_TIMEOUT in backend/.env."
+        f"{label} (public model) stopped sending tokens for {wait}s. "
+        "The public endpoint may be busy. Try again, or connect a local model."
     )
 
 
-def _connection_message(exc: Exception) -> str:
+def _connection_message(exc: Exception, label: str = "LM Studio") -> str:
+    if label == "LM Studio":
+        return (
+            f"Request to LM Studio failed ({exc.__class__.__name__}). "
+            "Check that the local server is still running."
+        )
     return (
-        f"Request to LM Studio failed ({exc.__class__.__name__}). "
-        "Check that the local server is still running."
+        f"Could not reach {label} (public model) "
+        f"({exc.__class__.__name__}). "
+        "Check your network, or connect a local model."
     )
 
 
@@ -296,9 +412,23 @@ async def chat_json(
     user: str,
     max_tokens: int = 1200,
     schema: dict[str, Any] | None = None,
+    *,
+    url: str | None = None,
+    headers: dict[str, str] | None = None,
+    label: str = "LM Studio",
+    timeout_seconds: float | None = None,
 ) -> Any:
     raw = await chat(
-        client, model, system, user, max_tokens=max_tokens, schema=schema
+        client,
+        model,
+        system,
+        user,
+        max_tokens=max_tokens,
+        schema=schema,
+        url=url,
+        headers=headers,
+        label=label,
+        timeout_seconds=timeout_seconds,
     )
     try:
         return extract_json(raw)
@@ -308,7 +438,16 @@ async def chat_json(
             "Reply with ONLY the requested JSON object and nothing else."
         )
         raw = await chat(
-            client, model, system, retry_user, max_tokens=max_tokens, schema=schema
+            client,
+            model,
+            system,
+            retry_user,
+            max_tokens=max_tokens,
+            schema=schema,
+            url=url,
+            headers=headers,
+            label=label,
+            timeout_seconds=timeout_seconds,
         )
         return extract_json(raw)
 
@@ -357,3 +496,74 @@ class DirectLLM:
             max_tokens=max_tokens,
             schema=schema,
         )
+
+
+class PublicLLM:
+    """OpenAI-compatible public endpoint, keyless by default."""
+
+    def __init__(self, client: httpx.AsyncClient) -> None:
+        self.client = client
+        self.model = settings.public_llm_model
+        self.label = f"{settings.public_llm_label} ({self.model})"
+
+    def _headers(self) -> dict[str, str] | None:
+        if settings.public_llm_api_key:
+            return {
+                "Authorization": f"Bearer {settings.public_llm_api_key}"
+            }
+        return None
+
+    async def list_models(self) -> list[str]:
+        return [self.model] if self.model else []
+
+    async def resolve_model(self) -> str:
+        if not self.model:
+            raise LLMError(
+                "No PUBLIC_LLM_MODEL is configured. Set it in backend/.env "
+                "or connect a local model."
+            )
+        return self.model
+
+    async def chat(
+        self,
+        model: str,
+        system: str,
+        user: str,
+        max_tokens: int = 1200,
+        schema: dict[str, Any] | None = None,
+    ) -> str:
+        async with _PUBLIC_LOCK:
+            return await chat(
+                self.client,
+                model or self.model,
+                system,
+                user,
+                max_tokens=max_tokens,
+                schema=schema,
+                url=settings.public_llm_url,
+                headers=self._headers(),
+                label=settings.public_llm_label,
+                timeout_seconds=settings.public_llm_timeout,
+            )
+
+    async def chat_json(
+        self,
+        model: str,
+        system: str,
+        user: str,
+        max_tokens: int = 1200,
+        schema: dict[str, Any] | None = None,
+    ) -> Any:
+        async with _PUBLIC_LOCK:
+            return await chat_json(
+                self.client,
+                model or self.model,
+                system,
+                user,
+                max_tokens=max_tokens,
+                schema=schema,
+                url=settings.public_llm_url,
+                headers=self._headers(),
+                label=settings.public_llm_label,
+                timeout_seconds=settings.public_llm_timeout,
+            )

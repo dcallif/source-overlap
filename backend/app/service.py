@@ -19,7 +19,7 @@ async def _noop(_: dict[str, Any]) -> None:
     return None
 
 
-CACHE_VERSION = "4"
+CACHE_VERSION = "5"
 _MEMORY_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
 _MEMORY_CACHE_LIMIT = 128
 
@@ -93,6 +93,8 @@ async def run_pipeline(
     refresh: bool = False,
     emit: EmitFn | None = None,
     backend: llm.LLMBackend | None = None,
+    backend_factory: Callable[[httpx.AsyncClient], llm.LLMBackend] | None = None,
+    backend_key: str = "local",
     cache_scope: str | None = None,
     source_config: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -104,7 +106,8 @@ async def run_pipeline(
         if source_config is not None
         else ""
     )
-    key = _cache_key(question, limit, source_signature)
+    cache_extra = f"{backend_key}|{source_signature}"
+    key = _cache_key(question, limit, cache_extra)
     scoped_key: str | None = None
 
     if cache_scope is None and not refresh:
@@ -126,7 +129,11 @@ async def run_pipeline(
         headers={"User-Agent": settings.user_agent},
         timeout=settings.fetch_timeout,
     ) as client:
-        llm_backend = backend or llm.DirectLLM(client)
+        llm_backend = backend or (
+            backend_factory(client)
+            if backend_factory is not None
+            else llm.DirectLLM(client)
+        )
         await emit(
             {
                 "type": "status",
@@ -140,7 +147,7 @@ async def run_pipeline(
             scoped_key = _cache_key(
                 question,
                 limit,
-                f"{cache_scope}|{model}|{source_signature}",
+                f"{cache_scope}|{model}|{cache_extra}",
             )
             if not refresh:
                 cached = _memory_read(scoped_key)
@@ -243,6 +250,7 @@ async def run_pipeline(
         {
             "model": model,
             "provider": llm_backend.label,
+            "backend": backend_key,
             "sources_requested": limit,
             "sources_retrieved": len(sources),
             "elapsed_ms": elapsed_ms,

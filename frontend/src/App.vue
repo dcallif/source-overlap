@@ -71,6 +71,7 @@
             :status="session"
             :pairing="pairing"
             :loading="sessionBusy"
+            :using-public="publicActive"
             @pair="refreshPairing"
             @select="chooseModel"
             @disconnect="disconnectLocalModel"
@@ -123,6 +124,14 @@
               {{ example }}
             </button>
           </div>
+
+          <p v-if="publicActive && !showModelPanel" class="provider-note">
+            Using the public model ({{ publicInfo.model }}). Question and source
+            text are sent to {{ publicInfo.label }}.
+            <button class="link-button" type="button" @click="openLocalModel">
+              Use your own local model
+            </button>
+          </p>
         </div>
 
         <aside class="specimen" aria-label="Example result">
@@ -178,10 +187,11 @@
 
       <section v-if="result || loading || error" class="ask-compact">
         <LocalModelPanel
-          v-if="session?.requires_connector && !session.connected"
+          v-if="showModelPanel"
           :status="session"
           :pairing="pairing"
           :loading="sessionBusy"
+          :using-public="publicActive"
           @pair="refreshPairing"
           @select="chooseModel"
           @disconnect="disconnectLocalModel"
@@ -225,6 +235,15 @@
         >
           Run again
         </button>
+        <button
+          v-if="publicActive && !showModelPanel"
+          class="link-button"
+          type="button"
+          :disabled="loading"
+          @click="openLocalModel"
+        >
+          Use your own local model
+        </button>
       </section>
 
       <section v-if="error" class="notice" role="alert">
@@ -237,6 +256,17 @@
               <li>Open the Local model panel and create a new pairing code.</li>
               <li>Run the source-overlap-connect command again.</li>
               <li>Keep that terminal open while you use the site.</li>
+            </ol>
+          </template>
+          <template v-else-if="isPublicError">
+            <p>The public model could not answer this request.</p>
+            <ol>
+              <li>Wait a moment and try again; the free endpoint is rate-limited.</li>
+              <li>Connect your own local model for more reliable answers.</li>
+              <li>
+                Or set PUBLIC_LLM_URL and PUBLIC_LLM_MODEL in backend/.env and
+                restart the backend.
+              </li>
             </ol>
           </template>
           <template v-else-if="isTimeout">
@@ -367,7 +397,8 @@
       <div class="shell site-footer-inner">
         <p>
           Local-first research. Sources are retrieved live; agreement counts
-          independent publishers, not links.
+          independent publishers, not links. A public model is used unless you
+          connect your own local model.
         </p>
       </div>
     </footer>
@@ -401,7 +432,7 @@ const examples = [
 ]
 
 const stages = [
-  { key: 'connecting', label: 'Connect to the local model' },
+  { key: 'connecting', label: 'Connect to the model' },
   { key: 'planning', label: 'Read the question' },
   { key: 'retrieving', label: 'Find sources' },
   { key: 'judging', label: 'Compare claims' },
@@ -422,11 +453,13 @@ const healthChecked = ref(false)
 const session = ref(null)
 const pairing = ref(null)
 const sessionBusy = ref(false)
+const showLocalModel = ref(false)
 const sourceCatalog = ref([])
 const sourceMax = ref(10)
 const sourcesLoading = ref(false)
 const sourcesError = ref('')
 let sessionTimer = null
+let healthTimer = null
 let pairingRequest = null
 
 const currentStageIndex = computed(() => {
@@ -439,6 +472,12 @@ const isConnectorError = computed(() =>
   /connector|pairing|connect your local model/i.test(error.value)
 )
 
+const isPublicError = computed(() =>
+  /public model|public endpoint|pollinations|rate-limited|http 429|http 402/i.test(
+    error.value
+  )
+)
+
 const isLlmError = computed(() =>
   /lm studio|local server|port 1234|no model/i.test(error.value)
 )
@@ -449,16 +488,41 @@ const isTimeout = computed(() =>
 
 const errorTitle = computed(() => {
   if (isConnectorError.value) return 'The local connector stopped'
+  if (isPublicError.value) return 'The public model is unavailable'
   if (isTimeout.value) return 'The model is taking too long'
   if (isLlmError.value) return "The local model isn't responding"
   return 'The request failed'
 })
 
-const showModelPanel = computed(
-  () => Boolean(session.value) && (
-    session.value.requires_connector || session.value.connected
-  )
+const publicInfo = computed(
+  () =>
+    session.value?.public_llm || {
+      enabled: false,
+      label: '',
+      model: '',
+    }
 )
+
+const localAvailable = computed(
+  () => Boolean(health.value?.lm_studio && health.value?.models?.length)
+)
+
+const publicActive = computed(() => {
+  const current = session.value
+  if (!current || current.connected || current.requires_connector) return false
+  if (!publicInfo.value?.enabled) return false
+  if (current.llm_provider === 'public') return true
+  if (current.llm_provider === 'local') return false
+  if (!healthChecked.value) return false
+  return !localAvailable.value
+})
+
+const showModelPanel = computed(() => {
+  const current = session.value
+  if (!current) return false
+  if (current.requires_connector || current.connected) return true
+  return publicActive.value && showLocalModel.value
+})
 
 const modelReady = computed(() => {
   const current = session.value
@@ -480,8 +544,18 @@ const healthLabel = computed(() => {
   if (current?.connected) {
     return current.model ? `Local · ${current.model}` : 'Local model ready'
   }
+  if (publicActive.value) {
+    return publicInfo.value.model
+      ? `Public · ${publicInfo.value.model}`
+      : 'Public model'
+  }
   if (!healthChecked.value) return 'Checking local model'
-  if (health.value?.lm_studio) return 'Local model ready'
+  if (localAvailable.value) {
+    return health.value.model
+      ? `Local · ${health.value.model}`
+      : 'Local model ready'
+  }
+  if (health.value?.lm_studio) return 'No model loaded'
   return 'Local model offline'
 })
 
@@ -500,11 +574,22 @@ const healthTitle = computed(() => {
       ? `Local model: ${current.model}`
       : 'Local model connected'
   }
+  if (publicActive.value) {
+    const label = publicInfo.value.label || 'a public provider'
+    const model = publicInfo.value.model || 'public model'
+    return (
+      `Using ${label} (${model}). Question and source text are sent ` +
+      'to a third party. Click to connect your own local model.'
+    )
+  }
   if (!healthChecked.value) return 'Checking LM Studio'
-  if (health.value?.lm_studio) {
+  if (localAvailable.value) {
     return health.value.model
       ? `LM Studio: ${health.value.model}`
       : 'LM Studio is ready'
+  }
+  if (health.value?.lm_studio) {
+    return 'LM Studio is running, but no model is loaded'
   }
   return 'LM Studio is not reachable'
 })
@@ -518,8 +603,9 @@ const healthClass = computed(() => {
   if (current?.connected) {
     return current.lm_studio && current.models?.length ? 'ok' : 'bad'
   }
+  if (publicActive.value) return 'ok'
   if (!healthChecked.value) return 'idle'
-  return health.value?.lm_studio ? 'ok' : 'bad'
+  return localAvailable.value ? 'ok' : 'bad'
 })
 
 const coverageLabel = computed(() => {
@@ -546,8 +632,8 @@ function stageState(index) {
   return 'pending'
 }
 
-async function loadHealth() {
-  healthChecked.value = false
+async function loadHealth(silent = false) {
+  if (!silent) healthChecked.value = false
   try {
     const { data } = await getHealth()
     health.value = data
@@ -697,19 +783,25 @@ async function removeSource(id) {
   }
 }
 
+async function openLocalModel() {
+  showLocalModel.value = true
+  await ensurePairing()
+  requestAnimationFrame(() => {
+    document
+      .getElementById('local-model-title')
+      ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  })
+}
+
 async function handleHealthClick() {
   await refreshSession()
   if (session.value?.requires_connector && !session.value.connected) {
-    await ensurePairing()
-    requestAnimationFrame(() => {
-      document
-        .getElementById('local-model-title')
-        ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    })
+    await openLocalModel()
     return
   }
-  if (!session.value) {
-    await loadHealth()
+  await loadHealth()
+  if (publicActive.value) {
+    await openLocalModel()
   }
 }
 
@@ -733,10 +825,7 @@ function handleEvent(event) {
 async function ask(refresh) {
   if (loading.value || !question.value.trim()) return
   if (!modelReady.value) {
-    await ensurePairing()
-    document
-      .getElementById('local-model-title')
-      ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    await openLocalModel()
     return
   }
   loading.value = true
@@ -797,6 +886,9 @@ onMounted(async () => {
   sessionTimer = window.setInterval(() => {
     if (!document.hidden) refreshSession()
   }, 4000)
+  healthTimer = window.setInterval(() => {
+    if (!document.hidden) loadHealth(true)
+  }, 30000)
   const preset = new URLSearchParams(window.location.search).get('q')
   if (preset && preset.trim().length >= 3) {
     question.value = preset
@@ -806,6 +898,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   if (sessionTimer) window.clearInterval(sessionTimer)
+  if (healthTimer) window.clearInterval(healthTimer)
 })
 </script>
 
@@ -1020,6 +1113,19 @@ main {
   margin-top: 0.5rem;
   font-size: 0.75rem;
   color: var(--ink-2);
+}
+
+.provider-note {
+  margin-top: 1rem;
+  max-width: 48ch;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  color: var(--ink-2);
+}
+
+.provider-note .link-button {
+  margin-left: 4px;
+  font-size: 0.8125rem;
 }
 
 .examples {

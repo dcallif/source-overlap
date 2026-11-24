@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import httpx
 from fastapi import (
@@ -88,16 +88,33 @@ def _session_from_request(
     return session
 
 
-def _llm_for_session(
-    session: connectors.Session | None,
-) -> tuple[llm.LLMBackend | None, str | None]:
-    if session and session.connector and not session.connector.closed:
+BackendFactory = Callable[[httpx.AsyncClient], llm.LLMBackend]
+
+
+def _backend_key(kind: str) -> str:
+    if kind == "public":
+        info = llm.public_info()
+        return f"public:{info['label']}:{info['model']}:{info['url']}"
+    if kind == "local":
         return (
-            connectors.BridgeLLM(
-                session.connector, session.selected_model
-            ),
-            session.id,
+            f"local:{settings.lm_studio_url}:"
+            f"{settings.lm_studio_model or 'auto'}"
         )
+    return kind
+
+
+async def _llm_for_session(
+    session: connectors.Session | None,
+) -> tuple[BackendFactory | None, str | None, str]:
+    if session and session.connector and not session.connector.closed:
+        connector = session.connector
+        selected_model = session.selected_model
+
+        def factory(client: httpx.AsyncClient) -> llm.LLMBackend:
+            return connectors.BridgeLLM(connector, selected_model)
+
+        return factory, session.id, f"connector:{session.id}"
+
     if settings.require_connector:
         raise HTTPException(
             status_code=409,
@@ -106,7 +123,30 @@ def _llm_for_session(
                 "and run the source-overlap-connect command."
             ),
         )
-    return None, None
+
+    provider = settings.llm_provider.strip().lower()
+    if provider not in {"auto", "local", "public"}:
+        provider = "auto"
+    public_enabled = bool(llm.public_info()["enabled"])
+
+    if provider == "public":
+        if not public_enabled:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "The public model is disabled. Set PUBLIC_LLM_ENABLED=true "
+                    "or connect a local model."
+                ),
+            )
+        return llm.PublicLLM, None, _backend_key("public")
+
+    if provider == "local":
+        return None, None, _backend_key("local")
+
+    if public_enabled and not await llm.local_ready():
+        return llm.PublicLLM, None, _backend_key("public")
+
+    return None, None, _backend_key("local")
 
 
 def _origin(request: Request) -> str:
@@ -135,8 +175,23 @@ async def root() -> dict[str, Any]:
     }
 
 
+def _active_mode(local_ready: bool) -> str:
+    if settings.require_connector:
+        return "connector"
+    provider = settings.llm_provider.strip().lower()
+    public_enabled = bool(llm.public_info()["enabled"])
+    if provider == "public":
+        return "public" if public_enabled else "none"
+    if provider == "local":
+        return "local"
+    if local_ready:
+        return "local"
+    return "public" if public_enabled else "none"
+
+
 @app.get("/api/health")
 async def health() -> dict[str, Any]:
+    public = llm.public_info()
     async with httpx.AsyncClient(timeout=5.0) as client:
         try:
             models = await llm.list_models(client)
@@ -146,6 +201,9 @@ async def health() -> dict[str, Any]:
                 "url": settings.lm_studio_url,
                 "models": [],
                 "error": str(exc),
+                "public_llm": public,
+                "provider_preference": settings.llm_provider,
+                "active": _active_mode(False),
             }
     return {
         "lm_studio": True,
@@ -153,6 +211,11 @@ async def health() -> dict[str, Any]:
         "model": settings.lm_studio_model or (models[0] if models else None),
         "models": models,
         "error": None if models else "No model loaded in LM Studio.",
+        "public_llm": public,
+        "provider_preference": settings.llm_provider,
+        "active": _active_mode(
+            any("embed" not in str(item).lower() for item in models)
+        ),
     }
 
 
@@ -323,13 +386,14 @@ async def ask(request: AskRequest, http_request: Request) -> dict[str, Any]:
     session = connectors.registry.get(
         http_request.cookies.get(settings.session_cookie_name)
     )
-    backend, scope = _llm_for_session(session)
+    backend_factory, scope, backend_key = await _llm_for_session(session)
     try:
         return await service.run_pipeline(
             request.question,
             request.max_sources,
             request.refresh,
-            backend=backend,
+            backend_factory=backend_factory,
+            backend_key=backend_key,
             cache_scope=scope,
             source_config=sources.store.retrieval_config(),
         )
@@ -344,7 +408,7 @@ async def ask_stream(
     session = connectors.registry.get(
         http_request.cookies.get(settings.session_cookie_name)
     )
-    backend, scope = _llm_for_session(session)
+    backend_factory, scope, backend_key = await _llm_for_session(session)
 
     queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
 
@@ -358,7 +422,8 @@ async def ask_stream(
                 request.max_sources,
                 request.refresh,
                 emit,
-                backend=backend,
+                backend_factory=backend_factory,
+                backend_key=backend_key,
                 cache_scope=scope,
                 source_config=sources.store.retrieval_config(),
             )

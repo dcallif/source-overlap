@@ -3,18 +3,20 @@
 Ask a question, pull real sources from the live web, and see **what they agree
 on and where they diverge** — as a Venn diagram plus a source-by-claim matrix.
 
-A local-first research tool. No search API keys and no cloud LLM: retrieval uses
-public Wikipedia and news RSS feeds, and stance extraction runs on a model in
-[LM Studio](https://lmstudio.ai/) on your machine. It runs locally, or as a
-hosted app that connects back to your own LM Studio through a small CLI relay.
+A local-first research tool. No search API keys: retrieval uses public Wikipedia
+and news RSS feeds, and stance extraction runs on a model in
+[LM Studio](https://lmstudio.ai/) on your machine whenever it is available. If
+no local model is connected, the app falls back to a keyless public model so it
+still works out of the box. It runs locally, or as a hosted app that can connect
+back to your own LM Studio through a small CLI relay.
 
 ```
 question
-  └─ decompose into atomic claims (+ search queries)         [local LLM]
+  └─ decompose into atomic claims (+ search queries)      [local or public LLM]
   └─ retrieve + rank sources: Wikipedia + Google/Bing News
      + custom RSS feeds                                        [keyless]
   └─ judge each (source, claim): supports / contradicts / not mentioned
-                                                             [local LLM]
+                                                            [local or public LLM]
   └─ aggregate → per-claim consensus, verdict, Venn, matrix
 ```
 
@@ -37,6 +39,20 @@ question
 A Venn diagram only depicts three sets cleanly, so the diagram uses the top
 three sources; the matrix always covers all retrieved sources.
 
+### Local vs public model
+
+The app tries providers in this order:
+
+1. A connected LM Studio relay (the current method for hosted use)
+2. A local LM Studio server on port 1234
+3. A keyless public model (Pollinations by default)
+
+The header pill shows which model is active. The public fallback sends the
+question and retrieved source text to a third party; connect a local model if
+you want that text to stay on your machine. Set `LLM_PROVIDER=local` or
+`LLM_PROVIDER=public` to force one mode, or `PUBLIC_LLM_ENABLED=false` to disable
+the fallback.
+
 ### How "agreement" is decided
 
 Corroboration counts **independent publishers**, not raw URLs, so two pages from
@@ -57,20 +73,22 @@ coverage, rather than a misleading `0%`.
 
 ## Requirements
 
-- **LM Studio** with a chat model loaded and the local server running on port
-  1234. Use a **7–14B** model by default; 12B worked well in testing. Very small
-  models (4B) often miss source details and produce incomplete answers. 27B+
-  models judge more reliably but can take minutes per question, so start with 4
-  sources.
+- **Optional: LM Studio** with a chat model loaded and the local server running
+  on port 1234. Use a **7–14B** model by default; 12B worked well in testing.
+  Very small models (4B) often miss source details and produce incomplete
+  answers. 27B+ models judge more reliably but can take minutes per question, so
+  start with 4 sources. Without LM Studio, the app uses the public fallback.
+- Internet access for retrieval and, when no local model is available, for the
+  public LLM.
 - Python 3.11+ (developed on 3.15) and Node 18+ for local development.
 - Python 3.10+ on the machine with LM Studio when using the hosted connector.
 
 ## Run it
 
-**1. Start the local model**
+**1. Optional: start a local model**
 
 In LM Studio: load a model, open the Developer tab, start the server (default
-`http://127.0.0.1:1234`).
+`http://127.0.0.1:1234`). If you skip this, the app uses the public model.
 
 **2. Backend**
 
@@ -92,7 +110,8 @@ npm run dev
 ```
 
 Open <http://localhost:5173>. The status pill in the header shows whether the
-backend can reach LM Studio.
+active model is local or public. If LM Studio is offline or no model is loaded,
+the app falls back to the public model.
 
 You can also deep-link a question: `http://localhost:5173/?q=your+question`.
 
@@ -102,26 +121,32 @@ connector WebSocket to the backend on port 8000.
 ## Hosted mode (Render)
 
 A single Docker web service serves the built frontend, the API, and the
-connector WebSocket. Each visitor pairs the hosted app with LM Studio running on
-their own computer; the model and source text never move to the server.
+connector WebSocket. By default the public model handles requests, so visitors
+can use the app immediately. They can optionally pair the hosted app with LM
+Studio running on their own computer; when paired, the local model takes over
+and the model and source text stay on the visitor's machine.
 
 **1. Push the repository to GitHub.**
 
 **2. Deploy the blueprint.** In Render, choose **New → Blueprint** and select the
 repo. `render.yaml` creates one free Docker web service with
-`REQUIRE_CONNECTOR=true` and HTTPS session cookies.
+`LLM_PROVIDER=auto`, `REQUIRE_CONNECTOR=false`, and HTTPS session cookies.
 
 You can also create the service manually:
 
 - Runtime: **Docker**, Dockerfile: `./Dockerfile`
 - Plan: **Free**
 - Health check path: `/healthz`
-- Environment: `REQUIRE_CONNECTOR=true`, `SESSION_COOKIE_SECURE=true`,
-  `CACHE_DIR=/tmp/source-overlap-cache`
+- Environment: `LLM_PROVIDER=auto`, `REQUIRE_CONNECTOR=false`,
+  `SESSION_COOKIE_SECURE=true`, `CACHE_DIR=/tmp/source-overlap-cache`
 
-**3. Connect your model.** Open the deployed site, copy the generated command
-(or click **Copy** in the Local model panel), install the connector once, and
-run it on the computer with LM Studio:
+To force connector-only operation, set `REQUIRE_CONNECTOR=true` and
+`LLM_PROVIDER=local` instead.
+
+**3. Optional: connect your model.** Open the deployed site, click the status
+pill to reveal the local model panel, copy the generated command (or click
+**Copy**), install the connector once, and run it on the computer with LM
+Studio:
 
 ```powershell
 python -m pip install ./connector
@@ -156,12 +181,20 @@ Set these in `backend/.env` (see `.env.example`):
 | `LM_TEMPERATURE` | `0.1` | Lower = more consistent JSON |
 | `LM_TIMEOUT` | `600` | Seconds allowed between streamed tokens |
 | `LM_DISABLE_THINKING` | `true` | Turn off Qwen3 reasoning for fast, clean JSON |
+| `LOCAL_PROBE_TIMEOUT` | `1.5` | Seconds to probe LM Studio before falling back |
+| `LLM_PROVIDER` | `auto` | `auto`, `local`, or `public` |
+| `PUBLIC_LLM_ENABLED` | `true` | Enable the public fallback |
+| `PUBLIC_LLM_URL` | Pollinations `/openai` | Full OpenAI-compatible chat URL |
+| `PUBLIC_LLM_MODEL` | `openai-fast` | Public model id |
+| `PUBLIC_LLM_LABEL` | `Pollinations` | Name shown in the UI |
+| `PUBLIC_LLM_API_KEY` | *(blank)* | Optional bearer token for another provider |
+| `PUBLIC_LLM_TIMEOUT` | `120` | Seconds allowed between public-model tokens |
 | `MAX_SOURCES` | `6` | Default number of sources to judge |
 | `FETCH_TIMEOUT` | `20` | Seconds per web request |
 | `ENABLE_BING_NEWS` | `true` | Second keyless news feed (direct links) |
 | `MAX_CUSTOM_SOURCES` | `10` | Maximum custom RSS/Atom feeds; `0` disables them |
 | `CACHE_TTL_SECONDS` | `86400` | Cache per question; `0` disables |
-| `REQUIRE_CONNECTOR` | `false` | Refuse asks unless a connector is paired |
+| `REQUIRE_CONNECTOR` | `false` | When true, refuse asks unless a connector is paired |
 | `SESSION_TTL_SECONDS` | `43200` | Idle lifetime of an anonymous session |
 | `PAIRING_TTL_SECONDS` | `600` | Lifetime of a pairing code |
 | `SESSION_COOKIE_NAME` | `source_overlap_session` | Anonymous session cookie |
@@ -170,9 +203,16 @@ Set these in `backend/.env` (see `.env.example`):
 | `FRONTEND_DIST` | `../frontend/dist` | Static build served by FastAPI |
 | `CACHE_DIR` | `backend/.cache` | Disk cache directory |
 
-`LM_STUDIO_URL` and `LM_STUDIO_MODEL` are used in local/direct mode. In hosted
-mode the model comes from the paired connector, and the app is expected to be
-served behind HTTPS. Keep `REQUIRE_CONNECTOR=false` for local development.
+`LLM_PROVIDER=auto` picks a connected relay first, then a reachable local LM
+Studio, then the public model. In hosted mode the paired connector takes over
+automatically; the app is expected to be served behind HTTPS. Keep
+`REQUIRE_CONNECTOR=false` to allow the public fallback.
+
+The default public endpoint is Pollinations' keyless anonymous endpoint
+(`https://text.pollinations.ai/openai`, model `openai-fast`). It is best-effort,
+rate-limited, and processes the question and source text off-machine. For better
+reliability, set `PUBLIC_LLM_URL`, `PUBLIC_LLM_MODEL`, and optionally
+`PUBLIC_LLM_API_KEY` to another OpenAI-compatible provider.
 
 Results are cached under `backend/.cache/`; the UI's **Re-run fresh** button
 bypasses the cache. Source-feed settings (which built-in feeds are on and any
@@ -185,7 +225,7 @@ public HTTP(S) URLs; private and loopback addresses are rejected.
 |---|---|---|
 | `POST` | `/api/ask` | `{question, max_sources?, refresh?}` → full result |
 | `POST` | `/api/ask/stream` | Same body; NDJSON progress + final result |
-| `GET` | `/api/health` | Direct-mode LM Studio reachability |
+| `GET` | `/api/health` | LM Studio reachability, public model, active mode |
 | `GET` | `/api/models` | Direct-mode models |
 | `GET` | `/api/sources` | Built-in and custom source feeds |
 | `POST` | `/api/sources` | `{url, label?}` → add a custom RSS/Atom feed |
@@ -217,7 +257,7 @@ backend/
     retrieval.py    Wikipedia + Google/Bing RSS + custom feeds, dedupe
     sources.py      source-feed registry, validation, persistence
     analysis.py     claim decomposition, stance judging, aggregation, Venn
-    llm.py          direct LM Studio client + shared payload/SSE helpers
+    llm.py          local and public LLM clients + shared payload/SSE helpers
     config.py       settings (.env)
 connector/
   source_overlap_connector/
@@ -246,8 +286,11 @@ render.yaml         Render free-tier blueprint
   (`LM_DISABLE_THINKING`); very large models can still be slow. Responses are
   streamed, so an idle timeout only fires if tokens stop arriving.
 - **Silence is not refutation.** Sparse coverage shows up as `unaddressed`.
-- **Hosted mode needs the connector.** There is no server-side model fallback in
-  v1, so the connector must be running while the hosted app is used.
+- **The public fallback is best-effort.** Pollinations' anonymous endpoint has no
+  SLA, can rate-limit, and may change. It also sends the question and source text
+  to a third party. Requests are serialized globally, so one public-model ask at
+  a time is served. Connect a local model for privacy, parallelism, and more
+  predictable quality.
 - **Free hosting is single-instance.** In-memory sessions and pairing codes mean
   the service should not be scaled horizontally, and a restart requires re-pairing.
 - **Source settings are shared.** Built-in toggle state and custom feeds apply to
