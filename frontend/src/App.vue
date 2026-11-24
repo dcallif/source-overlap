@@ -521,7 +521,7 @@ const showModelPanel = computed(() => {
   const current = session.value
   if (!current) return false
   if (current.requires_connector || current.connected) return true
-  return publicActive.value && showLocalModel.value
+  return showLocalModel.value
 })
 
 const modelReady = computed(() => {
@@ -679,7 +679,9 @@ async function refreshSession() {
   try {
     const { data } = await getSessionStatus()
     session.value = data
-    if (data.requires_connector && !data.connected) {
+    if (data.connected) {
+      pairing.value = null
+    } else if (data.requires_connector || showLocalModel.value) {
       await ensurePairing()
     } else {
       pairing.value = null
