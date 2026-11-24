@@ -19,7 +19,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
-from . import connectors, llm, service
+from . import connectors, llm, service, sources
 from .config import settings
 
 app = FastAPI(title="Source Overlap", version="0.1.0")
@@ -53,6 +53,15 @@ class AskRequest(BaseModel):
 
 class ModelRequest(BaseModel):
     model: str = Field(min_length=1, max_length=200)
+
+
+class SourceAddRequest(BaseModel):
+    url: str = Field(min_length=4, max_length=500)
+    label: str = Field(default="", max_length=80)
+
+
+class SourceUpdateRequest(BaseModel):
+    enabled: bool
 
 
 def _session_from_request(
@@ -118,6 +127,7 @@ async def root() -> dict[str, Any]:
             "/api/ask/stream",
             "/api/health",
             "/api/models",
+            "/api/sources",
             "/api/session/status",
             "/api/session/pairing",
             "/api/connector",
@@ -154,6 +164,39 @@ async def models() -> dict[str, Any]:
         except llm.LLMError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
     return {"models": items}
+
+
+@app.get("/api/sources")
+async def list_sources() -> dict[str, Any]:
+    return sources.store.snapshot()
+
+
+@app.post("/api/sources", status_code=201)
+async def add_source(payload: SourceAddRequest) -> dict[str, Any]:
+    try:
+        return await sources.store.add(payload.url, payload.label)
+    except sources.SourceError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.patch("/api/sources/{source_id}")
+async def update_source(
+    source_id: str, payload: SourceUpdateRequest
+) -> dict[str, Any]:
+    try:
+        return sources.store.set_enabled(source_id, payload.enabled)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Unknown source.") from None
+
+
+@app.delete("/api/sources/{source_id}")
+async def remove_source(source_id: str) -> dict[str, Any]:
+    try:
+        return sources.store.remove(source_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Unknown source.") from None
+    except sources.SourceError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.get("/api/session/status")
@@ -288,6 +331,7 @@ async def ask(request: AskRequest, http_request: Request) -> dict[str, Any]:
             request.refresh,
             backend=backend,
             cache_scope=scope,
+            source_config=sources.store.retrieval_config(),
         )
     except llm.LLMError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
@@ -316,6 +360,7 @@ async def ask_stream(
                 emit,
                 backend=backend,
                 cache_scope=scope,
+                source_config=sources.store.retrieval_config(),
             )
             await queue.put({"type": "result", "data": result})
         except llm.LLMError as exc:

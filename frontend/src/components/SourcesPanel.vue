@@ -17,6 +17,14 @@
         <div class="source-top">
           <span class="source-letter">{{ letterFor(index) }}</span>
           <span class="source-publisher">{{ source.publisher }}</span>
+          <span
+            v-if="
+              source.provider_label &&
+              source.provider_label !== source.publisher
+            "
+            class="source-provider"
+            >via {{ source.provider_label }}</span
+          >
           <time v-if="source.published" :datetime="source.published">{{
             fmtDate(source.published)
           }}</time>
@@ -156,6 +164,11 @@ function fmtDate(iso) {
 .source-publisher {
   font-size: 0.75rem;
   font-weight: 600;
+}
+
+.source-provider {
+  font-size: 0.6875rem;
+  color: var(--ink-2);
 }
 
 .source-top time {

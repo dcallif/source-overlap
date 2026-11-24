@@ -156,7 +156,9 @@ def _iso_from_struct(entry: Any) -> Optional[str]:
         return None
 
 
-def _source_from_rss(entry: Any, fallback_title: str) -> str:
+def _source_from_rss(
+    entry: Any, fallback_title: str, default_publisher: str = "News"
+) -> str:
     news_source = entry.get("news_source")
     if isinstance(news_source, str) and news_source.strip():
         return _clean(news_source)
@@ -165,7 +167,7 @@ def _source_from_rss(entry: Any, fallback_title: str) -> str:
         return _clean(src["title"])
     if " - " in fallback_title:
         return _clean(fallback_title.rsplit(" - ", 1)[-1])
-    return "News"
+    return default_publisher
 
 
 def _strip_publisher_suffix(title: str, publisher: str) -> str:
@@ -362,6 +364,8 @@ async def search_wikipedia(
                 "kind": "encyclopedia",
                 "published": None,
                 "text": extract[:9000],
+                "provider": "wikipedia",
+                "provider_label": "Wikipedia",
             }
         return None
 
@@ -376,7 +380,15 @@ def _unwrap_bing(link: str) -> str:
     return unquote(query.get("url", [""])[0]) or link
 
 
-def _parse_feed(raw: bytes, unwrap_bing: bool = False) -> list[dict[str, Any]]:
+def _parse_feed(
+    raw: bytes,
+    unwrap_bing: bool = False,
+    *,
+    provider_id: str = "news",
+    provider_label: str = "News",
+    default_publisher: str = "News",
+    kind: str = "news",
+) -> list[dict[str, Any]]:
     feed = feedparser.parse(raw)
     items: list[dict[str, Any]] = []
     for entry in feed.entries:
@@ -384,7 +396,7 @@ def _parse_feed(raw: bytes, unwrap_bing: bool = False) -> list[dict[str, Any]]:
         if unwrap_bing:
             link = _unwrap_bing(link)
         raw_title = _clean(entry.get("title", ""))
-        publisher = _source_from_rss(entry, raw_title)
+        publisher = _source_from_rss(entry, raw_title, default_publisher)
         title = _strip_publisher_suffix(raw_title, publisher) or raw_title
         summary = _clean(
             BeautifulSoup(entry.get("summary", ""), "html.parser").get_text(" ")
@@ -400,9 +412,11 @@ def _parse_feed(raw: bytes, unwrap_bing: bool = False) -> list[dict[str, Any]]:
                 "title": title,
                 "publisher": publisher,
                 "url": link,
-                "kind": "news",
+                "kind": kind,
                 "published": _iso_from_struct(entry),
                 "text": text[:4000],
+                "provider": provider_id,
+                "provider_label": provider_label,
             }
         )
     return items
@@ -421,7 +435,11 @@ async def search_google_news(
         resp.raise_for_status()
     except httpx.HTTPError:
         return []
-    return _parse_feed(resp.content)[:limit]
+    return _parse_feed(
+        resp.content,
+        provider_id="google_news",
+        provider_label="Google News",
+    )[:limit]
 
 
 async def search_bing_news(
@@ -437,7 +455,51 @@ async def search_bing_news(
         resp.raise_for_status()
     except httpx.HTTPError:
         return []
-    return _parse_feed(resp.content, unwrap_bing=True)[:limit]
+    return _parse_feed(
+        resp.content,
+        unwrap_bing=True,
+        provider_id="bing_news",
+        provider_label="Bing News",
+    )[:limit]
+
+
+async def search_custom_feed(
+    client: httpx.AsyncClient,
+    feed: dict[str, Any],
+    focus: set[str],
+    time_sensitive: bool,
+    limit: int = 5,
+) -> list[dict[str, Any]]:
+    url = str(feed.get("url") or "")
+    if not url:
+        return []
+    try:
+        resp = await client.get(
+            url,
+            headers=_headers(),
+            timeout=min(settings.fetch_timeout, 12.0),
+            follow_redirects=True,
+        )
+        resp.raise_for_status()
+    except httpx.HTTPError:
+        return []
+
+    label = str(feed.get("label") or "Custom feed")
+    items = _parse_feed(
+        resp.content,
+        provider_id=str(feed.get("id") or "custom"),
+        provider_label=label,
+        default_publisher=label,
+    )
+    scored: list[dict[str, Any]] = []
+    for item in items:
+        score = _relevance(item, focus, time_sensitive)
+        if score <= 0:
+            continue
+        item["relevance"] = score
+        scored.append(item)
+    scored.sort(key=lambda item: item["relevance"], reverse=True)
+    return scored[:limit]
 
 
 async def enrich_news_source(
@@ -477,11 +539,18 @@ async def gather_sources(
     claims: list[dict[str, Any]],
     max_sources: int,
     emit: EventFn,
+    enabled: set[str] | None = None,
+    custom_feeds: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     focus = _focus_terms(question, claims)
     time_sensitive = _is_time_sensitive(question)
     candidates: list[dict[str, Any]] = []
     seen: set[str] = set()
+
+    if enabled is None:
+        enabled = {"wikipedia", "google_news"}
+        if settings.enable_bing_news:
+            enabled.add("bing_news")
 
     unique_queries: list[str] = []
     for query in queries:
@@ -497,9 +566,17 @@ async def gather_sources(
                 "message": f'Searching for "{query}"',
             }
         )
-        wiki = await search_wikipedia(client, query, limit=2)
-        news = await search_google_news(client, query, limit=5)
-        if settings.enable_bing_news:
+        wiki = (
+            await search_wikipedia(client, query, limit=2)
+            if "wikipedia" in enabled
+            else []
+        )
+        news = (
+            await search_google_news(client, query, limit=5)
+            if "google_news" in enabled
+            else []
+        )
+        if "bing_news" in enabled:
             news = news + await search_bing_news(client, query, limit=5)
 
         for item in wiki + news:
@@ -509,6 +586,28 @@ async def gather_sources(
             seen.add(key)
             item["relevance"] = _relevance(item, focus, time_sensitive)
             candidates.append(item)
+
+    if custom_feeds:
+        await emit(
+            {
+                "type": "status",
+                "stage": "retrieving",
+                "message": f"Scanning {len(custom_feeds)} custom feed(s)",
+            }
+        )
+        feed_results = await asyncio.gather(
+            *(
+                search_custom_feed(client, feed, focus, time_sensitive)
+                for feed in custom_feeds
+            )
+        )
+        for group in feed_results:
+            for item in group:
+                key = _dedupe_key(item)
+                if key in seen:
+                    continue
+                seen.add(key)
+                candidates.append(item)
 
     await emit(
         {

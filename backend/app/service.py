@@ -94,11 +94,17 @@ async def run_pipeline(
     emit: EmitFn | None = None,
     backend: llm.LLMBackend | None = None,
     cache_scope: str | None = None,
+    source_config: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     emit = emit or _noop
     question = " ".join(question.split())
     limit = max(2, min(12, max_sources or settings.max_sources))
-    key = _cache_key(question, limit)
+    source_signature = (
+        json.dumps(source_config, sort_keys=True, separators=(",", ":"))
+        if source_config is not None
+        else ""
+    )
+    key = _cache_key(question, limit, source_signature)
     scoped_key: str | None = None
 
     if cache_scope is None and not refresh:
@@ -131,7 +137,11 @@ async def run_pipeline(
         model = await llm_backend.resolve_model()
 
         if cache_scope is not None:
-            scoped_key = _cache_key(question, limit, f"{cache_scope}|{model}")
+            scoped_key = _cache_key(
+                question,
+                limit,
+                f"{cache_scope}|{model}|{source_signature}",
+            )
             if not refresh:
                 cached = _memory_read(scoped_key)
                 if cached:
@@ -175,7 +185,22 @@ async def run_pipeline(
         )
 
         sources = await retrieval.gather_sources(
-            client, question, queries, claims, limit, emit
+            client,
+            question,
+            queries,
+            claims,
+            limit,
+            emit,
+            enabled=(
+                set(source_config.get("enabled") or [])
+                if source_config is not None
+                else None
+            ),
+            custom_feeds=(
+                source_config.get("custom")
+                if source_config is not None
+                else None
+            ),
         )
 
         stances: list[dict[str, Any]] = []

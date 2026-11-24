@@ -11,7 +11,8 @@ hosted app that connects back to your own LM Studio through a small CLI relay.
 ```
 question
   └─ decompose into atomic claims (+ search queries)         [local LLM]
-  └─ retrieve + rank sources: Wikipedia + Google News (+ Bing) [keyless]
+  └─ retrieve + rank sources: Wikipedia + Google/Bing News
+     + custom RSS feeds                                        [keyless]
   └─ judge each (source, claim): supports / contradicts / not mentioned
                                                              [local LLM]
   └─ aggregate → per-claim consensus, verdict, Venn, matrix
@@ -29,6 +30,9 @@ question
   red crosses, and a click-through to the exact supporting quote.
 - **Source cards** — publisher, date, link, and how often each source supported
   or contradicted.
+- **Source feeds manager** — see every feed the app pulls from (Wikipedia,
+  Google News, Bing News) and add your own public RSS/Atom feeds. Feeds can be
+  switched off individually.
 
 A Venn diagram only depicts three sets cleanly, so the diagram uses the top
 three sources; the matrix always covers all retrieved sources.
@@ -155,6 +159,7 @@ Set these in `backend/.env` (see `.env.example`):
 | `MAX_SOURCES` | `6` | Default number of sources to judge |
 | `FETCH_TIMEOUT` | `20` | Seconds per web request |
 | `ENABLE_BING_NEWS` | `true` | Second keyless news feed (direct links) |
+| `MAX_CUSTOM_SOURCES` | `10` | Maximum custom RSS/Atom feeds; `0` disables them |
 | `CACHE_TTL_SECONDS` | `86400` | Cache per question; `0` disables |
 | `REQUIRE_CONNECTOR` | `false` | Refuse asks unless a connector is paired |
 | `SESSION_TTL_SECONDS` | `43200` | Idle lifetime of an anonymous session |
@@ -170,7 +175,9 @@ mode the model comes from the paired connector, and the app is expected to be
 served behind HTTPS. Keep `REQUIRE_CONNECTOR=false` for local development.
 
 Results are cached under `backend/.cache/`; the UI's **Re-run fresh** button
-bypasses the cache.
+bypasses the cache. Source-feed settings (which built-in feeds are on and any
+custom feeds) are stored in `backend/.cache/sources.json`. Custom feeds must be
+public HTTP(S) URLs; private and loopback addresses are rejected.
 
 ## API
 
@@ -180,6 +187,10 @@ bypasses the cache.
 | `POST` | `/api/ask/stream` | Same body; NDJSON progress + final result |
 | `GET` | `/api/health` | Direct-mode LM Studio reachability |
 | `GET` | `/api/models` | Direct-mode models |
+| `GET` | `/api/sources` | Built-in and custom source feeds |
+| `POST` | `/api/sources` | `{url, label?}` → add a custom RSS/Atom feed |
+| `PATCH` | `/api/sources/{id}` | `{enabled}` → turn a feed on or off |
+| `DELETE` | `/api/sources/{id}` | Remove a custom feed |
 | `GET` | `/api/session/status` | Connector, LM Studio, and model status |
 | `POST` | `/api/session/pairing` | New pairing code and connector command |
 | `POST` | `/api/session/model` | `{model}` → select a loaded connector model |
@@ -203,7 +214,8 @@ backend/
     main.py         FastAPI routes, sessions, WebSocket relay, static frontend
     connectors.py   connector protocol, pairing, BridgeLLM, session registry
     service.py      pipeline + per-session result cache
-    retrieval.py    Wikipedia + Google News/Bing RSS, dedupe, enrichment
+    retrieval.py    Wikipedia + Google/Bing RSS + custom feeds, dedupe
+    sources.py      source-feed registry, validation, persistence
     analysis.py     claim decomposition, stance judging, aggregation, Venn
     llm.py          direct LM Studio client + shared payload/SSE helpers
     config.py       settings (.env)
@@ -213,7 +225,8 @@ connector/
 frontend/
   src/
     App.vue
-    components/     VerdictCard, AgreementBars, SourcesPanel, LocalModelPanel
+    components/     VerdictCard, AgreementBars, SourcesPanel, SourceSettings,
+                    LocalModelPanel
     api/client.js
 Dockerfile          multi-stage frontend + backend image
 render.yaml         Render free-tier blueprint
@@ -225,6 +238,8 @@ render.yaml         Render free-tier blueprint
 - **Google News links are JS redirect pages**, so only their RSS headline/snippet
   is available for judging. Bing (enabled by default) yields direct publisher
   links, which are fetched when the site allows it.
+- **Custom feeds are keyword-matched.** Entries are only used when they share
+  enough terms with the question, so a broad topical feed cannot flood results.
 - **Local models vary.** Malformed JSON is retried once; if it still fails, that
   source is treated as "not mentioned" rather than guessed.
 - **Reasoning models are slow.** Qwen3 "thinking" is disabled automatically
@@ -235,3 +250,5 @@ render.yaml         Render free-tier blueprint
   v1, so the connector must be running while the hosted app is used.
 - **Free hosting is single-instance.** In-memory sessions and pairing codes mean
   the service should not be scaled horizontally, and a restart requires re-pairing.
+- **Source settings are shared.** Built-in toggle state and custom feeds apply to
+  everyone using the same server instance.

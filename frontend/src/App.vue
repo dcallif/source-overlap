@@ -165,6 +165,17 @@
         </dl>
       </section>
 
+      <SourceSettings
+        v-if="!result && !loading && !error"
+        :sources="sourceCatalog"
+        :loading="sourcesLoading"
+        :error="sourcesError"
+        :max-custom="sourceMax"
+        @add="addSource"
+        @toggle="toggleSource"
+        @remove="removeSource"
+      />
+
       <section v-if="result || loading || error" class="ask-compact">
         <LocalModelPanel
           v-if="session?.requires_connector && !session.connected"
@@ -332,6 +343,17 @@
             </details>
           </section>
 
+          <SourceSettings
+            compact
+            :sources="sourceCatalog"
+            :loading="sourcesLoading"
+            :error="sourcesError"
+            :max-custom="sourceMax"
+            @add="addSource"
+            @toggle="toggleSource"
+            @remove="removeSource"
+          />
+
           <footer class="rail-meta">
             <p><span>Model</span> {{ result.meta.model }}</p>
             <p><span>Time</span> {{ elapsed }}s</p>
@@ -356,13 +378,18 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import {
   createPairing,
+  createSource,
+  deleteSource,
   disconnectModel,
   getHealth,
   getSessionStatus,
+  getSources,
   selectModel as setLocalModel,
+  updateSource,
 } from './api/client'
 import AgreementBars from './components/AgreementBars.vue'
 import LocalModelPanel from './components/LocalModelPanel.vue'
+import SourceSettings from './components/SourceSettings.vue'
 import SourcesPanel from './components/SourcesPanel.vue'
 import VerdictCard from './components/VerdictCard.vue'
 import { useTheme } from './composables/useTheme'
@@ -395,6 +422,10 @@ const healthChecked = ref(false)
 const session = ref(null)
 const pairing = ref(null)
 const sessionBusy = ref(false)
+const sourceCatalog = ref([])
+const sourceMax = ref(10)
+const sourcesLoading = ref(false)
+const sourcesError = ref('')
 let sessionTimer = null
 let pairingRequest = null
 
@@ -598,6 +629,74 @@ async function disconnectLocalModel() {
   }
 }
 
+async function loadSources() {
+  sourcesError.value = ''
+  try {
+    const { data } = await getSources()
+    sourceCatalog.value = data.sources || []
+    sourceMax.value = data.max_custom ?? 10
+  } catch {
+    sourcesError.value = 'Could not load the source feeds.'
+  }
+}
+
+function applySourceSnapshot(data) {
+  sourceCatalog.value = data.sources || []
+  sourceMax.value = data.max_custom ?? sourceMax.value
+}
+
+function sourceErrorMessage(err, fallback) {
+  return err?.response?.data?.detail || fallback
+}
+
+async function addSource({ url, label }) {
+  sourcesLoading.value = true
+  sourcesError.value = ''
+  try {
+    const { data } = await createSource(url, label)
+    applySourceSnapshot(data)
+  } catch (err) {
+    sourcesError.value = sourceErrorMessage(
+      err,
+      'Could not add that feed. Check the URL and try again.'
+    )
+  } finally {
+    sourcesLoading.value = false
+  }
+}
+
+async function toggleSource({ id, enabled }) {
+  sourcesLoading.value = true
+  sourcesError.value = ''
+  try {
+    const { data } = await updateSource(id, enabled)
+    applySourceSnapshot(data)
+  } catch (err) {
+    sourcesError.value = sourceErrorMessage(
+      err,
+      'Could not update that feed.'
+    )
+  } finally {
+    sourcesLoading.value = false
+  }
+}
+
+async function removeSource(id) {
+  sourcesLoading.value = true
+  sourcesError.value = ''
+  try {
+    const { data } = await deleteSource(id)
+    applySourceSnapshot(data)
+  } catch (err) {
+    sourcesError.value = sourceErrorMessage(
+      err,
+      'Could not remove that feed.'
+    )
+  } finally {
+    sourcesLoading.value = false
+  }
+}
+
 async function handleHealthClick() {
   await refreshSession()
   if (session.value?.requires_connector && !session.value.connected) {
@@ -694,7 +793,7 @@ async function ask(refresh) {
 }
 
 onMounted(async () => {
-  await Promise.all([loadHealth(), refreshSession()])
+  await Promise.all([loadHealth(), refreshSession(), loadSources()])
   sessionTimer = window.setInterval(() => {
     if (!document.hidden) refreshSession()
   }, 4000)

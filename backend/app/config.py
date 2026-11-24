@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     max_sources: int = 6
     fetch_timeout: float = 20.0
     enable_bing_news: bool = True
+    max_custom_sources: int = 10
 
     require_connector: bool = False
     session_ttl_seconds: int = 43200
