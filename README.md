@@ -33,8 +33,10 @@ question
 - **Source cards** — publisher, date, link, and how often each source supported
   or contradicted.
 - **Source feeds manager** — see every feed the app pulls from (Wikipedia,
-  Google News, Bing News) and add your own public RSS/Atom feeds. Feeds can be
-  switched off individually.
+  Google News, Bing News) and add your own public RSS/Atom feeds. Five preset
+  feeds come included: Snopes, PolitiFact, BBC World, NPR Top Stories, and
+  Nature. Preset feeds can be switched off but not removed. Feeds you add
+  yourself can also be removed.
 
 A Venn diagram only depicts three sets cleanly, so the diagram uses the top
 three sources; the matrix always covers all retrieved sources.

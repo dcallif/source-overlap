@@ -55,6 +55,18 @@ def _feed_id(url: str) -> str:
     return f"rss-{digest}"
 
 
+PRESET_FEEDS: list[dict[str, str]] = [
+    {"label": "Snopes", "url": "https://www.snopes.com/feed/"},
+    {"label": "PolitiFact", "url": "https://www.politifact.com/rss/"},
+    {
+        "label": "BBC World",
+        "url": "https://feeds.bbci.co.uk/news/world/rss.xml",
+    },
+    {"label": "NPR Top Stories", "url": "https://feeds.npr.org/1001/rss.xml"},
+    {"label": "Nature", "url": "https://www.nature.com/nature.rss"},
+]
+
+
 def _blocked_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     return not ip.is_global
 
@@ -130,6 +142,35 @@ class SourceStore:
     def path(self):
         return settings.cache_dir / "sources.json"
 
+    def _seed_presets(self) -> None:
+        existing_ids = {source["id"] for source in self.custom}
+        existing_urls = {source["url"] for source in self.custom}
+        changed = False
+        for preset in PRESET_FEEDS:
+            url = preset["url"]
+            source_id = _feed_id(url)
+            if source_id in existing_ids or url in existing_urls:
+                for source in self.custom:
+                    if source["id"] == source_id or source["url"] == url:
+                        if not source.get("locked"):
+                            source["locked"] = True
+                            changed = True
+                continue
+            self.custom.append(
+                {
+                    "id": source_id,
+                    "label": preset["label"],
+                    "url": url,
+                    "enabled": True,
+                    "locked": True,
+                }
+            )
+            existing_ids.add(source_id)
+            existing_urls.add(url)
+            changed = True
+        if changed:
+            self._persist()
+
     def _load(self) -> None:
         if self._loaded:
             return
@@ -137,6 +178,7 @@ class SourceStore:
         if not self.path.exists():
             if not settings.enable_bing_news:
                 self.disabled.add("bing_news")
+            self._seed_presets()
             return
         try:
             data = json.loads(
@@ -169,6 +211,7 @@ class SourceStore:
                     "locked": bool(raw.get("locked", False)),
                 }
             )
+        self._seed_presets()
 
     def _persist(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
